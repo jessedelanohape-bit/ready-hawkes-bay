@@ -409,11 +409,12 @@ ol.dirs small { color: var(--muted); }
     const z = zone;
     const banner = $('#zoneBanner');
     if (z === 'in') banner.innerHTML = '<div class="zone-banner zone-in"><h3>You are in the tsunami blue zone</h3><p>After a long or strong earthquake, walk out of the zone straight away, to higher ground or as far inland as you can. Your suggested route is below. Plan a second route too, and practise both.</p></div>';
-    else if (z === 'out') banner.innerHTML = '<div class="zone-banner zone-out"><h3>You are outside the tsunami blue zone</h3><p>Stay where you are after an earthquake unless told otherwise. If you work, study or visit inside the zone, plan a route from there too.</p></div>';
-    else banner.innerHTML = '<div class="zone-banner zone-unsure"><h3>Check your address</h3><p>Look up your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">Hawke’s Bay tsunami map</a>, Type your address above to check it against the official zone. Until then, plan as if you are in the zone.</p></div>';
+    else if (z === 'near') banner.innerHTML = '<div class="zone-banner zone-in"><h3>You are right on the edge of the tsunami blue zone</h3><p>Your spot is within ' + (store.get('edge', 0)) + ' m of the zone. Maps are not exact, so plan as if you are in it: after a long or strong earthquake, move inland or uphill straight away. Check your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">official Hawke\u2019s Bay tsunami map</a>.</p></div>';
+    else if (z === 'out') banner.innerHTML = '<div class="zone-banner zone-out"><h3>The pin is outside the mapped tsunami zone</h3><p>The pin is ' + (store.get('edge', 0)) + ' m from the zone edge. Make sure the pin is on your home, and confirm your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">official Hawke\u2019s Bay tsunami map</a>. If you work, study or visit inside the zone, plan a route from there too.</p></div>';
+    else banner.innerHTML = '<div class="zone-banner zone-unsure"><h3>Not confirmed yet: plan as if you are in the zone</h3><p>We could not confirm your exact spot. Put the pin on your home (tap the map or drag the pin), and check your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">official Hawke\u2019s Bay tsunami map</a>.</p></div>';
     const map = Object.assign({}, AREAS[area]);
-    if (z === 'in') map.tsunami = 'high';
-    if (z === 'out') delete map.tsunami;
+    if (z === 'in' || z === 'near' || z === 'unsure') map.tsunami = 'high';
+    if (z === 'out') map.tsunami = map.tsunami || 'low';
     const order = { high: 0, med: 1, low: 2 };
     const keys = Object.keys(map).sort((a, b) => order[map[a]] - order[map[b]]);
     $('#hazards').innerHTML = keys.map(k => `<div class="hz ${map[k]}"><span class="bar"></span><div><h3>${HAZ[k].name}<span class="lvl">${LVL[map[k]]}</span></h3><p>${HAZ[k].act}</p></div></div>`).join('') +
@@ -632,7 +633,7 @@ ol.dirs small { color: var(--muted); }
   /* ---------- emergency sheet ---------- */
   const SHEET = {
     quake: () => {
-      const inZone = zone !== 'out';
+      const inZone = zone !== 'out';  // anything not confirmed outside gets the evacuate advice
       return `<div class="step"><b>1. Drop, Cover, Hold</b><span>Get down, get under something sturdy, hold on until the shaking stops.</span></div>
       <div class="step"><b>2. Long or strong? Get gone</b><span>${inZone ? 'Shaking over a minute, or hard to stand: walk out of the blue zone now. Don’t wait for a warning. Don’t drive.' : 'You told us you are outside the blue zone. Stay away from the coast, rivers and streams.'}</span></div>
       <div class="step"><b>3. Keep moving</b><span>Once outside the zone, keep going to make room for others. Don’t go back for children at school: schools evacuate on their own plan.</span></div>
@@ -707,14 +708,27 @@ ol.dirs small { color: var(--muted); }
     const area = guessArea(label || ''); if (area) { areaSel.value = area; }
     status('Checking the tsunami zone…');
     try { await getZoneData(); } catch (e) { status('Could not load the official tsunami zone map. Check your connection and try again.', true); return; }
-    const inside = SafeRoute.inZone(start, polys);
-    zone = inside ? 'in' : 'out'; store.set('zone', zone); store.set('place', { lon, lat, label, precision: how.precision });
+    const localIn = SafeRoute.inZone(start, polys);
+    const edge = Math.round(SafeRoute.edgeDistance(start, polys));
+    const serverIn = await SafeRoute.serverInZone(start);
+    // Fail safe: inside if either check says so; only "outside" when both agree and the pin is exact.
+    const inside = localIn || serverIn === true;
+    const NEAR = 250;
+    if (inside) zone = 'in';
+    else if (how.precision < 2) zone = 'unsure';
+    else if (edge < NEAR || serverIn === null) zone = 'near';
+    else zone = 'out';
+    store.set('zone', zone); store.set('edge', edge); store.set('place', { lon, lat, label, precision: how.precision });
     renderPlace();
-    const exactNote = how.precision === 2 ? '' : how.precision === 1 ? ' We found the street but not the house number, so the pin may be off. Drag the pin or tap the map on your home to check exactly.' : ' We could not find that exact address, so the pin is only roughly placed. Drag the pin or tap the map on your home to check exactly.';
-    if (!inside) { status('This spot is outside the tsunami evacuation zone.' + exactNote, how.precision < 2); return; }
+    const exactNote = how.precision === 2 ? '' : how.precision === 1 ? ' We found the street but not the house number, so the pin may be off. Tap the map on your home or drag the pin to check exactly.' : ' We could not find that exact address, so the pin is only roughly placed. Tap the map on your home or drag the pin to check exactly.';
+    if (!inside) {
+      const msg = zone === 'unsure' ? 'Not confirmed.' : zone === 'near' ? (serverIn === null ? 'Could not double-check with the council map service. Plan as if you are in the zone.' : 'Within ' + edge + ' m of the zone edge. Plan as if you are in it.') : 'The pin is outside the mapped zone, ' + edge + ' m from its edge. Confirm on the official map.';
+      status(msg + exactNote, zone !== 'out');
+      return;
+    }
     status('Inside the zone. Finding the quickest walk out…');
     try {
-      const res = await SafeRoute.nearestSafeRoute(start, polys);
+      const res = await SafeRoute.nearestSafeRoute(start, polys, undefined, true);
       const r = res.best;
       if (map) {
         routeLine = L.geoJSON(r.geometry, { style: { color: '#e8a317', weight: 6, opacity: .95 } }).addTo(map);

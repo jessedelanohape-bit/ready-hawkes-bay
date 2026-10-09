@@ -68,7 +68,32 @@
     return picked;
   }
 
+  // Metres from a point to the nearest zone edge (flat-earth approximation, fine at this scale).
+  function edgeDistance(pt, polys) {
+    const kx = 111320 * Math.cos(pt[1] * Math.PI / 180), ky = 110540;
+    let best = Infinity;
+    for (const p of polys) for (const ring of p) for (let i = 1; i < ring.length; i++) {
+      const ax = (ring[i - 1][0] - pt[0]) * kx, ay = (ring[i - 1][1] - pt[1]) * ky;
+      const bx = (ring[i][0] - pt[0]) * kx, by = (ring[i][1] - pt[1]) * ky;
+      const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+      const d = Math.hypot(ax + t * dx, ay + t * dy);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
   /* ---------- network ---------- */
+  // Asks the council's map service directly whether a point is in the zone, using the full-detail shapes.
+  // Resolves true, false, or null when the service could not answer.
+  async function serverInZone(pt, fetchImpl) {
+    try {
+      const q = new URLSearchParams({ geometry: pt[0] + ',' + pt[1], geometryType: 'esriGeometryPoint', inSR: '4326',
+        spatialRel: 'esriSpatialRelIntersects', returnCountOnly: 'true', f: 'json' });
+      const r = await getJSON(ZONE_LAYER + '/query?' + q, fetchImpl);
+      return typeof r.count === 'number' ? r.count > 0 : null;
+    } catch (e) { return null; }
+  }
   async function getJSON(url, fetchImpl) {
     const r = await (fetchImpl || fetch)(url);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' from ' + new URL(url).host);
@@ -157,8 +182,9 @@
   }
 
   // Full pipeline: returns { inside, best?, candidates }
-  async function nearestSafeRoute(start, polys, fetchImpl) {
-    if (!inZone(start, polys)) return { inside: false };
+  // force: route even when the local shapes say outside (the council service said inside)
+  async function nearestSafeRoute(start, polys, fetchImpl, force) {
+    if (!force && !inZone(start, polys)) return { inside: false };
     const cands = safeCandidates(start, polys);
     if (!cands.length) throw new Error('Could not find a point outside the zone nearby');
     const ranked = await rankCandidates(start, cands, polys, fetchImpl);
@@ -168,6 +194,6 @@
     return { inside: true, best: r, candidates: ranked.length };
   }
 
-  const api = { polygonsFromGeoJSON, inZone, metres, safeCandidates, loadZone, geocode, nearestSafeRoute, route, ZONE_LAYER };
+  const api = { polygonsFromGeoJSON, inZone, edgeDistance, serverInZone, metres, safeCandidates, loadZone, geocode, nearestSafeRoute, route, ZONE_LAYER };
   if (typeof module !== 'undefined') module.exports = api; else root.SafeRoute = api;
 })(typeof window !== 'undefined' ? window : globalThis);
