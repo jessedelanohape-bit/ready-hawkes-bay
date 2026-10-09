@@ -47,9 +47,15 @@
 
   // Points just outside the zone, closest first, spread out so they lead to different streets.
   function safeCandidates(start, polys, opts) {
-    const o = Object.assign({ max: 20, spacing: 150, step: 40, scan: 4000 }, opts);
+    const o = Object.assign({ max: 20, spacing: 150, step: 40, scan: 20000 }, opts);
+    // boundary points every ~60 m, so long straight edges still offer exits along their length
     const verts = [];
-    for (const p of polys) for (const ring of p) for (const v of ring) verts.push(v);
+    for (const p of polys) for (const ring of p) for (let i = 0; i < ring.length; i++) {
+      const v = ring[i]; verts.push(v);
+      const w = ring[i + 1]; if (!w) continue;
+      const parts = Math.min(200, Math.floor(metres(v, w) / 60));
+      for (let k = 1; k < parts; k++) verts.push([v[0] + (w[0] - v[0]) * k / parts, v[1] + (w[1] - v[1]) * k / parts]);
+    }
     verts.sort((a, b) => metres(start, a) - metres(start, b));
     const dirs = [];
     for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; dirs.push([Math.cos(a), Math.sin(a)]); }
@@ -181,19 +187,43 @@
     return '';
   }
 
-  // Full pipeline: returns { inside, best?, candidates }
+  function bearing(a, b) {
+    const toR = Math.PI / 180, y = Math.sin((b[0] - a[0]) * toR) * Math.cos(b[1] * toR);
+    const x = Math.cos(a[1] * toR) * Math.sin(b[1] * toR) - Math.sin(a[1] * toR) * Math.cos(b[1] * toR) * Math.cos((b[0] - a[0]) * toR);
+    return (Math.atan2(y, x) / toR + 360) % 360;
+  }
+  const angleGap = (x, y) => { const d = Math.abs(x - y) % 360; return d > 180 ? 360 - d : d; };
+
+  // Up to n walking routes to different safe points, heading in clearly different directions, quickest first.
   // force: route even when the local shapes say outside (the council service said inside)
-  async function nearestSafeRoute(start, polys, fetchImpl, force) {
-    if (!force && !inZone(start, polys)) return { inside: false };
-    const cands = safeCandidates(start, polys);
+  async function safeRoutes(start, polys, fetchImpl, force, n) {
+    n = n || 3;
+    if (!force && !inZone(start, polys)) return { inside: false, routes: [] };
+    const cands = safeCandidates(start, polys, { max: 24 });
     if (!cands.length) throw new Error('Could not find a point outside the zone nearby');
     const ranked = await rankCandidates(start, cands, polys, fetchImpl);
     if (!ranked.length) throw new Error('No walking route out of the zone was found');
-    const top = ranked[0];
-    const r = top.route || await route(start, top.point, fetchImpl);
-    return { inside: true, best: r, candidates: ranked.length };
+    const chosen = [];
+    for (const c of ranked) {
+      if (chosen.length >= n) break;
+      const b = bearing(start, c.point);
+      if (chosen.some(o => angleGap(o.bearing, b) < 50 || metres(o.point, c.point) < 300)) continue;
+      chosen.push(Object.assign({ bearing: b }, c));
+    }
+    const routes = [];
+    for (const c of chosen) {
+      try { const r = c.route || await route(start, c.point, fetchImpl); r.bearing = c.bearing; routes.push(r); } catch (_) {}
+    }
+    if (!routes.length) throw new Error('No walking route out of the zone was found');
+    routes.sort((a, b) => a.duration - b.duration);
+    return { inside: true, routes };
   }
+  async function nearestSafeRoute(start, polys, fetchImpl, force) {
+    const res = await safeRoutes(start, polys, fetchImpl, force, 1);
+    return { inside: res.inside, best: res.routes[0] };
+  }
+  const compass = deg => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
 
-  const api = { polygonsFromGeoJSON, inZone, edgeDistance, serverInZone, metres, safeCandidates, loadZone, geocode, nearestSafeRoute, route, ZONE_LAYER };
+  const api = { polygonsFromGeoJSON, inZone, edgeDistance, serverInZone, metres, safeCandidates, loadZone, geocode, nearestSafeRoute, safeRoutes, compass, route, ZONE_LAYER };
   if (typeof module !== 'undefined') module.exports = api; else root.SafeRoute = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -163,11 +163,17 @@ table.hist th { color: var(--muted); font-weight: 600; }
 .results { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .results button { width: 100%; text-align: left; border: 1.5px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; }
 .pin span { display: block; width: 28px; height: 28px; border-radius: 50%; background: #c4372b; border: 4px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
-#map { height: 340px; border-radius: 12px; border: 1px solid var(--line); background: var(--zone-soft); }
+#map { position: relative; z-index: 0; height: 340px; border-radius: 12px; border: 1px solid var(--line); background: var(--zone-soft); }
 .leaflet-container { font-family: var(--font-body); }
 .status { font-weight: 600; }
 .status.err { color: var(--danger); }
 .route-sum { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.opts { display: grid; gap: 8px; }
+.opts button { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; text-align: left; border: 2px solid var(--line); border-left: 8px solid var(--c); background: var(--surface); border-radius: 10px; padding: 10px 12px; }
+.opts button[aria-checked="true"] { border-color: var(--c); background: var(--zone-soft); }
+.opt-name { font-weight: 700; }
+.opt-time { font-family: var(--font-display); font-size: 1.5rem; line-height: 1; grid-row: span 2; align-self: center; font-variant-numeric: tabular-nums; }
+.opt-meta { color: var(--muted); font-size: .9rem; }
 ol.dirs { margin: 0; padding-left: 1.3rem; display: grid; gap: 4px; }
 ol.dirs small { color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -665,11 +671,12 @@ ol.dirs small { color: var(--muted); }
 
   /* ---------- address, zone and route ---------- */
   const status = (msg, err) => { const el = $('#status'); el.textContent = msg; el.classList.toggle('err', !!err); };
-  let map = null, zoneLayer = null, startMarker = null, endMarker = null, routeLine = null, polys = null, zonePromise = null;
+  let routeGroup = null, map = null, zoneLayer = null, startMarker = null, endMarker = null, routeLine = null, polys = null, zonePromise = null;
   const HB = [-39.49, 176.9];
   function initMap() {
     if (map || typeof L === 'undefined') return;
     map = L.map('map', { zoomControl: true }).setView(HB, 11);
+    routeGroup = L.layerGroup().addTo(map);
     map.on('click', ev => { $('#matched').textContent = 'Showing: the spot you tapped'; checkPlace(ev.latlng.lng, ev.latlng.lat, '', { precision: 2 }); });
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
   }
@@ -696,8 +703,7 @@ ol.dirs small { color: var(--muted); }
     const start = [lon, lat];
     $('#results').innerHTML = '';
     $('#routeCard').hidden = true;
-    if (routeLine) { routeLine.remove(); routeLine = null; }
-    if (endMarker) { endMarker.remove(); endMarker = null; }
+    if (routeGroup) routeGroup.clearLayers();
     if (map) {
       if (startMarker) startMarker.remove();
       startMarker = L.marker([lat, lon], { draggable: true, autoPan: true, icon: L.divIcon({ className: 'pin', html: '<span></span>', iconSize: [28, 28], iconAnchor: [14, 14] }), keyboard: true, title: 'Your place. Drag to move.' })
@@ -728,27 +734,47 @@ ol.dirs small { color: var(--muted); }
     }
     status('Inside the zone. Finding the quickest walk out…');
     try {
-      const res = await SafeRoute.nearestSafeRoute(start, polys, undefined, true);
-      const r = res.best;
-      if (map) {
-        routeLine = L.geoJSON(r.geometry, { style: { color: '#e8a317', weight: 6, opacity: .95 } }).addTo(map);
-        endMarker = L.circleMarker([r.end[1], r.end[0]], { radius: 9, color: '#fff', weight: 3, fillColor: '#2c8a4b', fillOpacity: 1 }).addTo(map).bindTooltip('Safe point', { permanent: true, direction: 'top', offset: [0, -8] });
-        map.fitBounds(routeLine.getBounds(), { padding: [48, 48], maxZoom: 17 });
-      }
-      const m = mins(r.duration), ok = m <= 10, tight = m <= 15;
-      $('#routeCard').innerHTML = `
-        <h3>Walk out: about ${m} minute${m === 1 ? '' : 's'}</h3>
-        <div class="route-sum">
-          <div class="total"><b>${m}</b><span>minutes walking</span></div>
-          <div class="total"><b>${km(r.distance)}</b><span>to the safe point</span></div>
-        </div>
-        <div class="verdict ${ok ? 'green' : tight ? 'amber' : 'red'}">${ok ? 'This fits inside the 15 minute window, with time to get ready.' : tight ? 'This only just fits in 15 minutes. Leave the moment shaking stops, and practise it.' : 'This walk takes longer than 15 minutes. If you cannot get out in time, as a last resort go to the upper floors of a strong multi-storey building or the highest ground you can reach, and talk to Hawke’s Bay Emergency Management about your options.'}</div>
-        ${r.steps.length ? `<details><summary style="cursor:pointer;font-weight:600">Step-by-step directions</summary><ol class="dirs">${r.steps.map(s => `<li>${esc(s.text)} <small>${km(s.distance)}</small></li>`).join('')}</ol></details>` : ''}
-        <p class="src">Walking time assumes about 5 km/h on mapped roads and paths. After a big quake, roads and bridges may be damaged: if your way is blocked, go uphill or inland by another route. Always follow official instructions.</p>
-        <button class="btn alt" type="button" id="practiseRoute">Practise this walk</button>`;
-      $('#routeCard').hidden = false;
-      $('#practiseRoute').addEventListener('click', () => { scenSel.value = 'tsunami'; paintScen(); $('#walkEst').value = m; showTab('practice'); });
-      status('Route found. Walk, don’t drive.' + exactNote, how.precision < 2);
+      const res = await SafeRoute.safeRoutes(start, polys, undefined, true, 3);
+      const routes = res.routes;
+      const COLORS = ['#e8a317', '#7b4fc9', '#1f9e8a'];
+      const NAMES = ['A', 'B', 'C'];
+      let routeLines = [], endMarkers = [];
+      const draw = sel => {
+        routeGroup.clearLayers(); routeLines = []; endMarkers = [];
+        if (!map) return;
+        // unselected routes first, so the chosen one sits on top
+        routes.map((r, i) => i).sort((a, b) => (a === sel) - (b === sel)).forEach(i => {
+          const r = routes[i], on = i === sel;
+          const line = L.geoJSON(r.geometry, { style: { color: COLORS[i], weight: on ? 7 : 4, opacity: on ? .95 : .55, dashArray: on ? null : '6 8' } }).addTo(routeGroup);
+          line.on('click', () => pick(i));
+          routeLines.push(line);
+          const mk = L.circleMarker([r.end[1], r.end[0]], { radius: on ? 10 : 7, color: '#fff', weight: 3, fillColor: on ? '#2c8a4b' : COLORS[i], fillOpacity: 1 }).addTo(routeGroup)
+            .bindTooltip('Safe point ' + NAMES[i], { permanent: on, direction: 'top', offset: [0, -8] });
+          mk.on('click', () => pick(i));
+          endMarkers.push(mk);
+        });
+      };
+      const verdict = m => m <= 10 ? ['green', 'Fits inside the 15 minute window, with time to get ready.'] : m <= 15 ? ['amber', 'Only just fits in 15 minutes. Leave the moment shaking stops, and practise it.'] : ['red', 'Takes longer than 15 minutes. If you cannot get out in time, as a last resort go to the upper floors of a strong multi-storey building or the highest ground you can reach, and talk to Hawke\u2019s Bay Emergency Management about your options.'];
+      const pick = sel => {
+        draw(sel);
+        const r = routes[sel], m = mins(r.duration), v = verdict(m);
+        $('#routeCard').innerHTML = `
+          <h3>${routes.length > 1 ? routes.length + ' ways out' : 'Your way out'}</h3>
+          <div class="opts" role="radiogroup" aria-label="Route options">${routes.map((o, i) => `<button type="button" role="radio" aria-checked="${i === sel}" data-i="${i}" style="--c:${COLORS[i]}">
+            <span class="opt-name">Route ${NAMES[i]}${i === 0 ? ' \u00b7 quickest' : ''}</span>
+            <span class="opt-time">${mins(o.duration)} min</span>
+            <span class="opt-meta">${km(o.distance)}, heading ${SafeRoute.compass(o.bearing)}</span></button>`).join('')}</div>
+          <div class="verdict ${v[0]}">Route ${NAMES[sel]}: about ${m} minute${m === 1 ? '' : 's'} on foot. ${v[1]}</div>
+          ${r.steps.length ? `<details><summary style="cursor:pointer;font-weight:600">Step-by-step directions for route ${NAMES[sel]}</summary><ol class="dirs">${r.steps.map(s => `<li>${esc(s.text)} <small>${km(s.distance)}</small></li>`).join('')}</ol></details>` : ''}
+          <p class="src">Know at least two routes: after a big quake a road or bridge on one may be blocked. Walking times assume about 5 km/h on mapped roads and paths. Always follow official instructions.</p>
+          <button class="btn alt" type="button" id="practiseRoute">Practise route ${NAMES[sel]}</button>`;
+        $('#routeCard').hidden = false;
+        $('#routeCard .opts').onclick = ev => { const b = ev.target.closest('button[data-i]'); if (b) pick(Number(b.dataset.i)); };
+        $('#practiseRoute').addEventListener('click', () => { scenSel.value = 'tsunami'; paintScen(); $('#walkEst').value = m; showTab('practice'); });
+      };
+      pick(0);
+      if (map) { const g = L.featureGroup(routeLines.concat(endMarkers)); map.fitBounds(g.getBounds(), { padding: [48, 48], maxZoom: 17 }); }
+      status((routes.length > 1 ? routes.length + ' routes found. ' : 'Route found. ') + 'Walk, don\u2019t drive.' + exactNote, how.precision < 2);
     } catch (e) {
       status('Could not work out a walking route right now (' + e.message + '). Use the map to find the nearest high ground outside the blue area.', true);
     }
