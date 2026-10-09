@@ -203,8 +203,13 @@
     if (!force && !inZone(start, polys)) return { inside: false, routes: [] };
     const cands = safeCandidates(start, polys, { max: 24, step: opts.step || 40, clear: opts.clear || 0 });
     if (!cands.length) throw new Error('Could not find a point outside the zone nearby');
-    const ranked = await rankCandidates(start, cands, polys, fetchImpl, opts.clear || 0);
-    if (!ranked.length) throw new Error('No walking route out of the zone was found');
+    let ranked = await rankCandidates(start, cands, polys, fetchImpl, opts.clear || 0);
+    let straight = false;
+    if (!ranked.length) {
+      // No routing service (offline?): fall back to straight-line directions to the nearest safe points.
+      straight = true;
+      ranked = cands.map(c => ({ point: c, distance: metres(start, c) * 1.25, duration: metres(start, c) * 1.25 / 1.2 })).sort((a, b) => a.distance - b.distance);
+    }
     const chosen = [];
     for (const c of ranked) {
       if (chosen.length >= n) break;
@@ -214,11 +219,12 @@
     }
     const routes = [];
     for (const c of chosen) {
+      if (straight) { routes.push({ geometry: { type: 'LineString', coordinates: [start, c.point] }, duration: c.duration, distance: c.distance, end: c.point, steps: [], bearing: c.bearing, straight: true }); continue; }
       try { const r = c.route || await route(start, c.point, fetchImpl); r.bearing = c.bearing; routes.push(r); } catch (_) {}
     }
     if (!routes.length) throw new Error('No walking route out of the zone was found');
     routes.sort((a, b) => a.duration - b.duration);
-    return { inside: true, routes };
+    return { inside: true, routes, straight };
   }
   async function nearestSafeRoute(start, polys, fetchImpl, force) {
     const res = await safeRoutes(start, polys, fetchImpl, force, 1);

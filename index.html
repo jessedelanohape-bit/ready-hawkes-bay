@@ -160,6 +160,17 @@ table.hist th { color: var(--muted); font-weight: 600; }
 .sheet .scen button { border: 2px solid rgba(255,255,255,.6); background: transparent; color: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 700; }
 .sheet .scen button[aria-pressed="true"] { background: #fff; color: var(--danger); }
 .sheet a { color: #fff; }
+.sheet .yn { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sheet .yn button { border: 0; border-radius: 14px; padding: 22px 12px; font-family: var(--font-display); font-size: 1.7rem; text-transform: uppercase; letter-spacing: .04em; background: #fff; color: var(--danger); }
+.sheet .yn button.no { background: rgba(255,255,255,.18); color: #fff; border: 2px solid rgba(255,255,255,.6); }
+.sheet .yn small { display: block; font-family: var(--font-body); font-size: .9rem; text-transform: none; letter-spacing: 0; font-weight: 400; margin-top: 4px; }
+.sheet .act { font-family: var(--font-display); font-size: 3.2rem; line-height: 1; text-transform: uppercase; letter-spacing: .04em; }
+.sheet .clock { font-size: 2.6rem; text-align: left; }
+.sheet .scen button.wide { width: 100%; text-align: left; border-radius: 12px; padding: 14px 16px; font-size: 1.15rem; }
+.sheet .opts button { background: #fff; color: #12222e; border-color: #fff; }
+.sheet .opts button[aria-checked="true"] { background: #ffe9a8; }
+.sheet .opts .opt-meta { color: #546575; }
+.sheet .note { background: rgba(0,0,0,.18); border-radius: 12px; padding: 12px 16px; }
 
 .src { font-size: .82rem; color: var(--muted); }
 .search { display: flex; gap: 8px; }
@@ -191,7 +202,7 @@ ol.dirs small { color: var(--muted); }
   <div class="brand"><h1>Ready Hawke's Bay</h1><small>Your emergency plan, for where you live</small></div>
   <button class="sos" id="sosBtn" type="button">Emergency now</button>
 </header>
-<div class="proto">Prototype for testing (version 7). In a real emergency, follow Civil Defence and emergency services.</div>
+<div class="proto">Prototype for testing (version 8). In a real emergency, follow Civil Defence and emergency services.</div>
 
 <main>
   <!-- MY PLACE -->
@@ -346,21 +357,15 @@ ol.dirs small { color: var(--muted); }
 
 <div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
   <div class="sheet-in">
-    <button class="close" id="sheetClose" type="button">Close</button>
+    <div style="display:flex;justify-content:space-between;gap:8px"><button class="close" id="sheetBack" type="button" hidden>Back</button><span></span><button class="close" id="sheetClose" type="button">Close</button></div>
     <h2 id="sheetTitle">What's happening?</h2>
-    <div class="scen" id="sheetScen">
-      <button type="button" data-s="quake" aria-pressed="true">Earthquake</button>
-      <button type="button" data-s="flood" aria-pressed="false">Flood</button>
-      <button type="button" data-s="attack" aria-pressed="false">Armed attack</button>
-      <button type="button" data-s="outage" aria-pressed="false">Power or phones down</button>
-    </div>
     <div id="sheetBody" class="sheet-in"></div>
     <p style="font-weight:700">Life in danger: call 111.</p>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="route.js?v=7"></script>
+<script src="route.js?v=8"></script>
 <script>
 (function () {
   const store = {
@@ -644,43 +649,139 @@ ol.dirs small { color: var(--muted); }
     }).join('')}</tbody></table></div><p class="src">* estimated walk</p>`;
   }
 
-  /* ---------- emergency sheet ---------- */
-  const SHEET = {
-    quake: () => {
-      const inZone = zone !== 'out';  // anything not confirmed outside gets the evacuate advice
-      return `<div class="step"><b>1. Drop, Cover, Hold</b><span>Get down, get under something sturdy, hold on until the shaking stops.</span></div>
-      <div class="step"><b>2. Long or strong? Get gone</b><span>${inZone ? 'Shaking over a minute, or hard to stand: walk out of the blue zone now. Don’t wait for a warning. Don’t drive.' : 'You told us you are outside the blue zone. Stay away from the coast, rivers and streams.'}</span></div>
-      <div class="step"><b>3. Keep moving</b><span>Once outside the zone, keep going to make room for others. Don’t go back for children at school: schools evacuate on their own plan.</span></div>
-      <button type="button" class="close" id="sheetRoute" style="justify-self:stretch;background:#fff;color:var(--danger);font-family:var(--font-display);font-size:1.4rem;text-transform:uppercase;padding:14px">Find my way out now</button>
-      <div class="step"><b>4. Stay out</b><span>Stay away from the coast for at least 24 hours, or until Civil Defence gives the all-clear.</span></div>`;
-    },
-    flood: () => `<div class="step"><b>1. Move to higher ground</b><span>Go now if you are told to, or if water is rising. Take your grab bags and pets.</span></div>
-      <div class="step"><b>2. Never drive through water</b><span>Even shallow, fast-moving water can knock you over or sweep a car away.</span></div>
-      <div class="step"><b>3. Turn off power at the switchboard</b><span>Only if it is safe and dry to reach.</span></div>
-      <div class="step"><b>4. Listen to local radio</b><span>Follow Hawke’s Bay Civil Defence updates.</span></div>`,
-    attack: () => `<div class="step"><b>Escape</b><span>Get away from the threat if it is safe. Leave belongings behind. Help others if you can, but don’t wait.</span></div>
-      <div class="step"><b>Hide</b><span>If you can’t get away, hide out of sight. Lock or barricade the door, silence your phone, stay quiet.</span></div>
-      <div class="step"><b>Tell</b><span>Call 111 when it is safe. Say where you are, what you saw, and where the attacker went.</span></div>
-      <p>Guidance from <a href="https://www.police.govt.nz/advice-services/crowded-places/know-what-do" target="_blank" rel="noopener">NZ Police</a>.</p>`,
-    outage: () => `<div class="step"><b>1. Use your plan, not your phone</b><span>Your meeting place: ${esc(store.get('meet', '') || 'not set yet')}. Your contact: ${esc(store.get('contact', '') || 'not set yet')}.</span></div>
-      <div class="step"><b>2. Battery radio</b><span>Tune to local radio for Civil Defence updates.</span></div>
-      <div class="step"><b>3. Text, don’t call</b><span>Texts get through more often when networks are busy. Keep calls for 111.</span></div>
-      <div class="step"><b>4. Trust official sources only</b><span>In a cyber attack, fake messages spread fast. Check against Civil Defence, Police or the NCSC.</span></div>`
+  /* ---------- emergency guide ----------
+     What's happening -> how bad -> the rules and your route, activated for you. */
+  const plan = () => `Your meeting place: ${esc(store.get('meet', '') || 'not set yet')}. Your out-of-region contact: ${esc(store.get('contact', '') || 'not set yet')}.`;
+  const GUIDE = {
+    quake: { name: 'Earthquake', q: 'Was it LONG or STRONG?', yes: 'Long: over a minute. Strong: hard to stand up.', no: 'Short, and I could stand', ifYes: 'tsunami', ifNo: 'quake-small' },
+    tsunami: { name: 'Tsunami warning or alert', go: 'tsunami' },
+    flood: { name: 'Flood', q: 'Is water rising near you, or were you told to leave?', ifYes: 'flood-leave', ifNo: 'flood-prepare' },
+    fire: { name: 'Fire', q: 'Can you see flames or smell smoke nearby?', ifYes: 'fire-leave', ifNo: 'fire-watch' },
+    chem: { name: 'Chemical spill, smoke or gas', q: 'Have you been told to evacuate?', ifYes: 'chem-leave', ifNo: 'chem-shelter' },
+    attack: { name: 'Armed attack', q: 'Can you get away safely right now?', ifYes: 'escape', ifNo: 'hide' },
+    storm: { name: 'Storm or cyclone', q: 'Have you been told to evacuate?', ifYes: 'flood-leave', ifNo: 'storm-shelter' },
+    outage: { name: 'Power, phones or internet down', go: 'outage' }
   };
-  let sheetScen = 'quake';
-  const paintSheet = () => {
-    document.querySelectorAll('#sheetScen button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.s === sheetScen)));
-    $('#sheetBody').innerHTML = SHEET[sheetScen]();
+  const step = (b, t) => `<div class="step"><b>${b}</b><span>${t}</span></div>`;
+  const ACTIONS = {
+    'tsunami': { title: 'Evacuate now', route: true, timer: 'since the shaking stopped. A local tsunami can arrive within 15 minutes.', body: () =>
+      step('Walk out of the zone', 'Head inland or uphill now. Don’t wait for a warning. Don’t drive: roads jam and may be broken.') +
+      step('Take only your grab bag', 'Shoes, bag, pets, go. Don’t go into the zone to collect children: schools evacuate on their own plan.') +
+      step('Keep moving, stay out', 'Once outside the zone keep going to make room for others. Stay away from the coast, rivers and estuaries for at least 24 hours or until the all-clear.') },
+    'quake-small': { title: 'Check and stay put', body: () =>
+      step('1. Expect aftershocks', 'Drop, Cover, Hold each time. Stay away from windows and anything that can fall.') +
+      step('2. Check people', 'Help anyone hurt. Call 111 only for life-threatening injuries.') +
+      step('3. Check your home', 'Smell gas? Turn it off at the meter and open windows. Don’t use lifts.') +
+      step('4. If it gets long or strong, go', 'Any quake that lasts over a minute or knocks you off your feet means evacuate the tsunami zone straight away.') +
+      step('5. Listen', 'Battery radio or official channels for Civil Defence updates.') },
+    'flood-leave': { title: 'Get to higher ground', route: true, routeNote: 'These routes head out of the tsunami zone, which is also the low-lying land near the coast and rivers. Go uphill where you can.', body: () =>
+      step('1. Go now', 'Take grab bags, medicine and pets. Walk if roads are flooded.') +
+      step('2. Never drive or walk through water', 'Even shallow fast water can sweep you or a car away.') +
+      step('3. Power off', 'Turn off power at the switchboard if it is safe and dry to reach.') +
+      step('4. Tell your contact', 'Text, don’t call. ' + plan()) },
+    'flood-prepare': { title: 'Prepare to leave', body: () =>
+      step('1. Get ready', 'Bags, shoes, pets and medicine by the door. Car facing out with fuel.') +
+      step('2. Move things up', 'Lift valuables and chemicals off the floor. Secure outdoor items.') +
+      step('3. Watch and listen', 'Local radio and Hawke’s Bay Civil Defence. Leave early if water rises or you are told to.') +
+      step('4. Never drive through water', 'Turn around. Roads and bridges can be washed out underneath.') },
+    'fire-leave': { title: 'Leave early', body: () =>
+      step('1. Go now, away from the fire', 'Don’t wait to be told. Drive if you can, with the wind at your back, away from the smoke.') +
+      step('2. Take the car kit and grab bags', 'Wear long sleeves and shoes. Wet a cloth to breathe through if smoky.') +
+      step('3. Call 111', 'If the fire is not already reported.') +
+      step('4. Tell your contact where you are going', plan()) },
+    'fire-watch': { title: 'Get ready and watch', body: () =>
+      step('1. Check the fire danger', 'checkitsalright.nz shows today’s risk and any fire bans.') +
+      step('2. Prepare to leave', 'Bags and car kit ready. Know two ways out by road.') +
+      step('3. Clear around the house', 'Gutters, dry grass, woodpiles and gas bottles away from walls.') +
+      step('4. Leave if smoke gets close', 'Leaving early is the safest option.') },
+    'chem-leave': { title: 'Leave as told', body: () =>
+      step('1. Go the way you were told', 'Usually crosswind, away from the smoke or smell. Close windows and vents as you leave.') +
+      step('2. Don’t drive through the plume', 'If you must pass it, windows up and air recirculating.') +
+      step('3. Wash', 'Once clear, wash skin and change clothes if you were exposed.') +
+      step('4. Listen for the all-clear', 'Fire and Emergency NZ and Civil Defence updates.') },
+    'chem-shelter': { title: 'Shelter inside', body: () =>
+      step('1. Get inside', 'Bring pets in. Close every window and door.') +
+      step('2. Turn off air', 'Heat pumps, fans, extractor fans and air conditioning off.') +
+      step('3. Pick an inside room', 'Away from the smell, with few windows. Tape or towel gaps if it is strong.') +
+      step('4. Wait for the all-clear', 'Don’t go outside until Fire and Emergency NZ or Civil Defence say so.') },
+    'escape': { title: 'Escape', body: () =>
+      step('Get away now', 'Move away from the threat if it is safe. Leave belongings. Don’t stop to film.') +
+      step('Help others if you can', 'But don’t wait for anyone who won’t move.') +
+      step('Then tell', 'Call 111 when safe. Say where you are, what you saw, where the attacker went.') +
+      `<p>Guidance from <a href="https://www.police.govt.nz/advice-services/crowded-places/know-what-do" target="_blank" rel="noopener">NZ Police: Escape. Hide. Tell.</a></p>` },
+    'hide': { title: 'Hide', body: () =>
+      step('Get out of sight', 'Lock or barricade the door. Turn off lights. Silence your phone, including vibrate.') +
+      step('Stay quiet and low', 'Away from doors and windows. Stay there until police tell you it is safe.') +
+      step('Tell', 'Text 111 only if you cannot speak safely, otherwise call when it is safe. Say where you are and what you saw.') +
+      step('If you can escape later, go', 'Escape beats hiding when a safe way out opens.') +
+      `<p>Guidance from <a href="https://www.police.govt.nz/advice-services/crowded-places/know-what-do" target="_blank" rel="noopener">NZ Police: Escape. Hide. Tell.</a></p>` },
+    'storm-shelter': { title: 'Shelter and prepare', body: () =>
+      step('1. Stay inside', 'Away from windows. Bring pets in and tie down outdoor items.') +
+      step('2. Charge and fill', 'Phones and power banks charged, water containers filled, car fuelled.') +
+      step('3. Ready to leave', 'Grab bags by the door in case you are told to go.') +
+      step('4. Listen', 'MetService warnings and Hawke’s Bay Civil Defence.') },
+    'outage': { title: 'Use your plan', body: () =>
+      step('1. Your plan, not your phone', plan()) +
+      step('2. Battery radio', 'Tune to local radio for Civil Defence updates.') +
+      step('3. Text, don’t call', 'Texts get through more often when networks are busy. Keep calls for 111.') +
+      step('4. Trust official sources only', 'In a cyber attack fake messages spread fast. Check against Civil Defence, Police or the NCSC.') +
+      step('5. Keep the fridge shut', 'Food keeps about 4 hours in a fridge and 24 to 48 hours in a full freezer.') }
   };
-  $('#sheetScen').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; sheetScen = b.dataset.s; paintSheet(); });
-  $('#sosBtn').addEventListener('click', () => { paintSheet(); $('#sheet').hidden = false; $('#sheetClose').focus(); });
-  $('#sheetBody').addEventListener('click', e => { if (e.target.closest('#sheetRoute')) { $('#sheet').hidden = true; showTab('place'); locate(false); } });
-  $('#sheetClose').addEventListener('click', () => { $('#sheet').hidden = true; $('#sosBtn').focus(); });
+  let wiz = { hazard: null, action: null }, actStart = null, actTimer = null;
+  const sheetGo = (hazard, action) => { wiz = { hazard, action }; paintSheet(); };
+  function paintSheet() {
+    const body = $('#sheetBody'), title = $('#sheetTitle'), back = $('#sheetBack');
+    clearInterval(actTimer);
+    if (!wiz.hazard) {
+      title.textContent = 'What’s happening?'; back.hidden = true;
+      body.innerHTML = '<div class="scen" style="display:grid">' + Object.entries(GUIDE).map(([k, g]) => `<button type="button" class="wide" data-h="${k}">${g.name}</button>`).join('') + '</div>';
+      return;
+    }
+    const g = GUIDE[wiz.hazard];
+    back.hidden = false;
+    if (!wiz.action) {
+      if (g.go) { wiz.action = g.go; return paintSheet(); }
+      title.textContent = g.name;
+      body.innerHTML = `<p class="act" style="font-size:2rem">${g.q}</p><div class="yn"><button type="button" data-a="${g.ifYes}">Yes${g.yes ? `<small>${g.yes}</small>` : ''}</button><button type="button" class="no" data-a="${g.ifNo}">No${g.no ? `<small>${g.no}</small>` : ''}</button></div>`;
+      return;
+    }
+    const a = ACTIONS[wiz.action];
+    title.textContent = g.name;
+    body.innerHTML = `<p class="act">${a.title}</p>` +
+      (a.timer ? `<div class="note"><div class="clock" id="actClock">0:00</div><div>${a.timer}</div></div>` : '') +
+      (a.route ? `<div id="actRoute" class="note"><b>Finding you and your best way out…</b></div>` : '') +
+      a.body();
+    if (a.timer) { actStart = actStart || Date.now(); const tick = () => { const el = $('#actClock'); if (el) el.textContent = fmt((Date.now() - actStart) / 1000); }; tick(); actTimer = setInterval(tick, 1000); }
+    if (a.route) activateRoute(a);
+  }
+  async function activateRoute(a) {
+    const box = () => $('#actRoute');
+    let res = null;
+    try { res = await locate(true); } catch (e) { res = null; }
+    if (!box()) return;
+    if (!res) { box().innerHTML = '<b>Could not get your location.</b> Head inland or uphill now, away from the coast and rivers. Open the map and tap where you are. <button type="button" class="close" id="actMap" style="margin-top:8px">Open the map</button>'; return; }
+    if (res.zone === 'out') { box().innerHTML = `<b>Your spot is outside the mapped tsunami zone</b> (${res.edge} m from its edge). Stay where you are unless told otherwise, and stay away from the coast and rivers. <button type="button" class="close" id="actMap" style="margin-top:8px">See it on the map</button>`; return; }
+    if (!res.routes || !res.routes.length) { box().innerHTML = '<b>No route could be worked out.</b> Head inland or uphill now, away from the coast and rivers. <button type="button" class="close" id="actMap" style="margin-top:8px">Open the map</button>'; return; }
+    const NAMES = ['Plan A', 'Plan B', 'Plan C'];
+    box().innerHTML = `<b>${res.zone === 'in' ? 'You are in the tsunami zone.' : 'Treat your spot as in the zone.'} Your ways out:</b>
+      <div class="opts" style="margin-top:8px">${res.routes.map((o, i) => `<button type="button" data-i="${i}" aria-checked="${i === 0}" style="--c:${['#e8a317', '#7b4fc9', '#1f9e8a'][i]}"><span class="opt-name">${NAMES[i]}${i === 0 ? ' · quickest' : ''}</span><span class="opt-time">${mins(o.duration)} min</span><span class="opt-meta">${km(o.distance)}, head ${SafeRoute.compass(o.bearing)}${o.straight ? ' (straight line, no map service)' : ''}</span></button>`).join('')}</div>
+      ${a.routeNote ? `<p style="margin-top:8px">${a.routeNote}</p>` : ''}
+      <button type="button" class="close" id="actMap" style="margin-top:8px">Open the map and directions</button>`;
+    box().querySelector('.opts').onclick = ev => { const b = ev.target.closest('button[data-i]'); if (b && res.pick) { res.pick(Number(b.dataset.i)); box().querySelectorAll('.opts button').forEach(x => x.setAttribute('aria-checked', String(x === b))); } };
+  }
+  $('#sheetBody').addEventListener('click', e => {
+    const h = e.target.closest('button[data-h]'); if (h) return sheetGo(h.dataset.h, null);
+    const a = e.target.closest('button[data-a]'); if (a) return sheetGo(wiz.hazard, a.dataset.a);
+    if (e.target.closest('#actMap')) { $('#sheet').hidden = true; showTab('place'); $('#zoneBanner').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+  $('#sheetBack').addEventListener('click', () => { if (wiz.action && !GUIDE[wiz.hazard].go) sheetGo(wiz.hazard, null); else sheetGo(null, null); });
+  $('#sosBtn').addEventListener('click', () => { actStart = null; sheetGo(null, null); $('#sheet').hidden = false; $('#sheetClose').focus(); });
+  $('#sheetClose').addEventListener('click', () => { clearInterval(actTimer); $('#sheet').hidden = true; $('#sosBtn').focus(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) $('#sheetClose').click(); });
 
 
   /* ---------- address, zone and route ---------- */
-  const diag = {}; const showDiag = () => { $('#diag').textContent = 'v7 \u00b7 ' + Object.entries(diag).map(([k, v]) => k + ': ' + v).join(' \u00b7 '); };
+  const diag = {}; const showDiag = () => { $('#diag').textContent = 'v8 \u00b7 ' + Object.entries(diag).map(([k, v]) => k + ': ' + v).join(' \u00b7 '); };
   const status = (msg, err) => { const el = $('#status'); el.textContent = msg; el.classList.toggle('err', !!err); };
   let routeGroup = null, map = null, zoneLayer = null, startMarker = null, endMarker = null, routeLine = null, polys = null, zonePromise = null;
   const HB = [-39.49, 176.9];
@@ -710,6 +811,7 @@ ol.dirs small { color: var(--muted); }
   const km = m => m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m / 10) * 10 + ' m';
   async function checkPlace(lon, lat, label, how) {
     how = how || { precision: 2 };
+    const result = { zone: null, edge: null, routes: null, pick: null };
     initMap();
     const start = [lon, lat];
     $('#results').innerHTML = '';
@@ -725,7 +827,7 @@ ol.dirs small { color: var(--muted); }
     const area = guessArea(label || ''); if (area) { areaSel.value = area; }
     status('Checking the tsunami zone…');
     diag.spot = lat.toFixed(4) + ',' + lon.toFixed(4); diag['zone map'] = 'loading'; showDiag();
-    try { await getZoneData(); diag['zone map'] = polys.length + ' shapes'; } catch (e) { diag['zone map'] = 'failed'; showDiag(); status('Could not load the official tsunami zone map. Check your connection and try again. Until then, plan as if you are in the zone.', true); zone = 'unsure'; store.set('zone', zone); renderPlace(); return; }
+    try { await getZoneData(); diag['zone map'] = polys.length + ' shapes'; } catch (e) { diag['zone map'] = 'failed'; showDiag(); status('Could not load the official tsunami zone map. Check your connection and try again. Until then, plan as if you are in the zone.', true); zone = 'unsure'; store.set('zone', zone); renderPlace(); result.zone = 'unsure'; return result; }
     const localIn = SafeRoute.inZone(start, polys);
     const edge = Math.round(SafeRoute.edgeDistance(start, polys));
     const serverIn = await SafeRoute.serverInZone(start);
@@ -738,15 +840,16 @@ ol.dirs small { color: var(--muted); }
     else if (edge < NEAR || serverIn === null) zone = 'near';
     else zone = 'out';
     store.set('zone', zone); store.set('edge', edge); store.set('place', { lon, lat, label, precision: how.precision });
+    result.zone = zone; result.edge = edge;
     renderPlace();
     const exactNote = how.precision === 2 ? '' : how.precision === 1 ? ' We found the street but not the house number, so the pin may be off. Tap the map on your home or drag the pin to check exactly.' : ' We could not find that exact address, so the pin is only roughly placed. Tap the map on your home or drag the pin to check exactly.';
     if (zone === 'unsure' && !inside && edge >= 400) {
       status('Not confirmed: the rough spot is ' + edge + ' m from the zone edge.' + exactNote, true);
-      return;
+      return result;
     }
     if (zone === 'out') {
       status('The pin is outside the mapped zone, ' + edge + ' m from its edge. Confirm on the official map.' + exactNote, false);
-      return;
+      return result;
     }
     const lead = zone === 'in' ? 'Inside the zone.' : zone === 'near' ? (serverIn === null ? 'Could not double-check with the council map service, so planning as if you are in the zone.' : 'Within ' + edge + ' m of the zone edge, so planning as if you are in it.') : 'Not confirmed, so planning as if you are in the zone.';
     status(lead + ' Finding your ways out\u2026', true);
@@ -781,7 +884,7 @@ ol.dirs small { color: var(--muted); }
           <div class="opts" role="radiogroup" aria-label="Route options">${routes.map((o, i) => `<button type="button" role="radio" aria-checked="${i === sel}" data-i="${i}" style="--c:${COLORS[i]}">
             <span class="opt-name">${NAMES[i]}${i === 0 ? ' \u00b7 quickest' : ''}</span>
             <span class="opt-time">${mins(o.duration)} min</span>
-            <span class="opt-meta">${km(o.distance)}, heading ${SafeRoute.compass(o.bearing)}</span></button>`).join('')}</div>
+            <span class="opt-meta">${km(o.distance)}, heading ${SafeRoute.compass(o.bearing)}${o.straight ? ' (straight line: no map service, so follow roads that way)' : ''}</span></button>`).join('')}</div>
           <div class="verdict ${v[0]}">${NAMES[sel]}: about ${m} minute${m === 1 ? '' : 's'} on foot. ${v[1]}</div>
           ${r.steps.length ? `<details><summary style="cursor:pointer;font-weight:600">Step-by-step directions for ${NAMES[sel]}</summary><ol class="dirs">${r.steps.map(s => `<li>${esc(s.text)} <small>${km(s.distance)}</small></li>`).join('')}</ol></details>` : ''}
           <p class="src">Know at least two routes: after a big quake a road or bridge on one may be blocked. Walking times assume about 5 km/h on mapped roads and paths. Always follow official instructions.</p>
@@ -790,7 +893,8 @@ ol.dirs small { color: var(--muted); }
         $('#routeCard .opts').onclick = ev => { const b = ev.target.closest('button[data-i]'); if (b) pick(Number(b.dataset.i)); };
         $('#practiseRoute').addEventListener('click', () => { scenSel.value = 'tsunami'; paintScen(); $('#walkEst').value = m; showTab('practice'); });
       };
-      diag.routes = routes.length; showDiag();
+      diag.routes = routes.length + (res.straight ? ' (straight line)' : ''); showDiag();
+      result.routes = routes; result.pick = pick;
       pick(0);
       $('#zoneBanner').scrollIntoView({ behavior: 'smooth', block: 'start' });
       if (map) { const g = L.featureGroup(routeLines.concat(endMarkers)); map.fitBounds(g.getBounds(), { padding: [48, 48], maxZoom: 17 }); }
@@ -799,6 +903,7 @@ ol.dirs small { color: var(--muted); }
       diag.routes = 'failed: ' + e.message; showDiag();
       status('Could not work out a walking route right now (' + e.message + '). Use the map to find the nearest high ground outside the blue area.', true);
     }
+    return result;
   }
   $('#addrForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -814,17 +919,19 @@ ol.dirs small { color: var(--muted); }
     } catch (err) { status('Address search is not responding. Check your connection and try again.', true); }
   });
   function locate(quiet) {
-    if (!navigator.geolocation) { if (!quiet) status('This device cannot share its location.', true); return; }
-    status('Finding your location\u2026');
-    navigator.geolocation.getCurrentPosition(p => { $('#matched').textContent = 'Showing: your current location (about ' + Math.round(p.coords.accuracy) + ' m accuracy)'; $('#addr').value = ''; checkPlace(p.coords.longitude, p.coords.latitude, '', { precision: p.coords.accuracy <= 50 ? 2 : 1 }); },
-      () => status(quiet ? 'Allow location, or type your address, to check your spot.' : 'Location was not shared. Type your address instead.', true), { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) { if (!quiet) status('This device cannot share its location.', true); return reject(new Error('no geolocation')); }
+      status('Finding your location\u2026');
+      navigator.geolocation.getCurrentPosition(p => { $('#matched').textContent = 'Showing: your current location (about ' + Math.round(p.coords.accuracy) + ' m accuracy)'; $('#addr').value = ''; checkPlace(p.coords.longitude, p.coords.latitude, '', { precision: p.coords.accuracy <= 50 ? 2 : 1 }).then(resolve, reject); },
+        () => { status(quiet ? 'Allow location, or type your address, to check your spot.' : 'Location was not shared. Type your address instead.', true); reject(new Error('location not shared')); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+    });
   }
   $('#locBtn').addEventListener('click', () => locate(false));
   initMap();
   getZoneData().catch(() => {});
   const lastPlace = store.get('place', null);
   if (lastPlace) { $('#addr').value = (lastPlace.label || '').split(',').slice(0, 3).join(','); checkPlace(lastPlace.lon, lastPlace.lat, lastPlace.label, { precision: lastPlace.precision == null ? 2 : lastPlace.precision }); }
-  else locate(true);
+  else locate(true).catch(() => {});
 
   renderPlace(); renderPack(); renderHistory();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
