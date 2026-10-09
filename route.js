@@ -4,6 +4,7 @@
   const ZONE_LAYER = 'https://services1.arcgis.com/hWByVnSkh6ElzHkf/arcgis/rest/services/HawkesBay_Tsunami_Evacuation_Zones_View/FeatureServer/1';
   const OSRM_FOOT = 'https://routing.openstreetmap.de/routed-foot';
   const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+  const PHOTON = 'https://photon.komoot.io/api/';
 
   /* ---------- geometry ---------- */
   // polygons: array of polygons, each an array of rings, each ring an array of [lon, lat]
@@ -85,11 +86,37 @@
     }
     return { type: 'FeatureCollection', features };
   }
-  async function geocode(text, fetchImpl) {
+  // precision: 2 = the house itself, 1 = the street, 0 = a suburb or wider area
+  async function geocodeNominatim(text, fetchImpl) {
     const q = new URLSearchParams({ format: 'jsonv2', q: text, countrycodes: 'nz', viewbox: '175.9,-38.6,178.7,-40.6',
       bounded: '1', addressdetails: '1', limit: '5' });
     const res = await getJSON(NOMINATIM + '?' + q, fetchImpl);
-    return res.map(r => ({ label: r.display_name, lon: Number(r.lon), lat: Number(r.lat), address: r.address || {} }));
+    return res.map(r => {
+      const a = r.address || {};
+      const precision = a.house_number || r.addresstype === 'building' || r.addresstype === 'house' ? 2 : (r.category === 'highway' || r.class === 'highway' || r.addresstype === 'road') ? 1 : 0;
+      return { label: r.display_name, lon: Number(r.lon), lat: Number(r.lat), precision };
+    });
+  }
+  async function geocodePhoton(text, fetchImpl) {
+    const q = new URLSearchParams({ q: text, limit: '5', lat: '-39.5', lon: '176.9', bbox: '175.9,-40.6,178.7,-38.6' });
+    const fc = await getJSON(PHOTON + '?' + q, fetchImpl);
+    return (fc.features || []).filter(f => (f.properties || {}).countrycode === 'NZ').map(f => {
+      const p = f.properties; const c = f.geometry.coordinates;
+      const street = p.street || (p.osm_key === 'highway' ? p.name : '');
+      const first = p.housenumber ? p.housenumber + ' ' + street : (p.name || street);
+      const label = [first, p.district || p.locality, p.city, p.county].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i).join(', ');
+      return { label, lon: c[0], lat: c[1], precision: p.housenumber ? 2 : (p.osm_key === 'highway' || p.type === 'street') ? 1 : 0 };
+    });
+  }
+  // Asks two OpenStreetMap search services and keeps the most exact matches first.
+  async function geocode(text, fetchImpl) {
+    const settled = await Promise.allSettled([geocodeNominatim(text, fetchImpl), geocodePhoton(text, fetchImpl)]);
+    if (settled.every(r => r.status === 'rejected')) throw settled[0].reason;
+    const all = [];
+    for (const r of settled) if (r.status === 'fulfilled') for (const h of r.value) {
+      if (!all.some(o => metres([o.lon, o.lat], [h.lon, h.lat]) < 40)) all.push(h);
+    }
+    return all.sort((a, b) => b.precision - a.precision).slice(0, 5);
   }
   const ll = p => p[0].toFixed(6) + ',' + p[1].toFixed(6);
 

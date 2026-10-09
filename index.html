@@ -162,6 +162,7 @@ table.hist th { color: var(--muted); font-weight: 600; }
 .btn.alt { background: transparent; color: var(--zone); border: 1.5px solid var(--zone); }
 .results { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .results button { width: 100%; text-align: left; border: 1.5px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; }
+.pin span { display: block; width: 28px; height: 28px; border-radius: 50%; background: #c4372b; border: 4px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
 #map { height: 340px; border-radius: 12px; border: 1px solid var(--line); background: var(--zone-soft); }
 .leaflet-container { font-family: var(--font-body); }
 .status { font-weight: 600; }
@@ -192,7 +193,9 @@ ol.dirs small { color: var(--muted); }
         <button class="btn" type="submit">Find</button>
       </form>
       <button class="btn alt" type="button" id="locBtn">Use my current location</button>
+      <p class="src" id="matched"></p>
       <p class="status" id="status" aria-live="polite"></p>
+      <p class="src">Pin in the wrong place? Tap the map on your home, or drag the red pin.</p>
       <ul class="results" id="results"></ul>
     </div>
 
@@ -666,6 +669,7 @@ ol.dirs small { color: var(--muted); }
   function initMap() {
     if (map || typeof L === 'undefined') return;
     map = L.map('map', { zoomControl: true }).setView(HB, 11);
+    map.on('click', ev => { $('#matched').textContent = 'Showing: the spot you tapped'; checkPlace(ev.latlng.lng, ev.latlng.lat, '', { precision: 2 }); });
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
   }
   function getZoneData() {
@@ -685,7 +689,8 @@ ol.dirs small { color: var(--muted); }
   }
   const mins = s => Math.max(1, Math.round(s / 60));
   const km = m => m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m / 10) * 10 + ' m';
-  async function checkPlace(lon, lat, label) {
+  async function checkPlace(lon, lat, label, how) {
+    how = how || { precision: 2 };
     initMap();
     const start = [lon, lat];
     $('#results').innerHTML = '';
@@ -694,16 +699,19 @@ ol.dirs small { color: var(--muted); }
     if (endMarker) { endMarker.remove(); endMarker = null; }
     if (map) {
       if (startMarker) startMarker.remove();
-      startMarker = L.circleMarker([lat, lon], { radius: 9, color: '#fff', weight: 3, fillColor: '#c4372b', fillOpacity: 1 }).addTo(map).bindTooltip('You', { permanent: true, direction: 'top', offset: [0, -8] });
+      startMarker = L.marker([lat, lon], { draggable: true, autoPan: true, icon: L.divIcon({ className: 'pin', html: '<span></span>', iconSize: [28, 28], iconAnchor: [14, 14] }), keyboard: true, title: 'Your place. Drag to move.' })
+        .addTo(map).bindTooltip('You', { permanent: true, direction: 'top', offset: [0, -14] });
+      startMarker.on('dragend', ev => { const p = ev.target.getLatLng(); $('#matched').textContent = 'Showing: where you moved the pin'; checkPlace(p.lng, p.lat, label, { precision: 2 }); });
       map.setView([lat, lon], 15);
     }
     const area = guessArea(label || ''); if (area) { areaSel.value = area; }
     status('Checking the tsunami zone…');
     try { await getZoneData(); } catch (e) { status('Could not load the official tsunami zone map. Check your connection and try again.', true); return; }
     const inside = SafeRoute.inZone(start, polys);
-    zone = inside ? 'in' : 'out'; store.set('zone', zone); store.set('place', { lon, lat, label });
+    zone = inside ? 'in' : 'out'; store.set('zone', zone); store.set('place', { lon, lat, label, precision: how.precision });
     renderPlace();
-    if (!inside) { status('This place is outside the tsunami evacuation zone.'); return; }
+    const exactNote = how.precision === 2 ? '' : how.precision === 1 ? ' We found the street but not the house number, so the pin may be off. Drag the pin or tap the map on your home to check exactly.' : ' We could not find that exact address, so the pin is only roughly placed. Drag the pin or tap the map on your home to check exactly.';
+    if (!inside) { status('This spot is outside the tsunami evacuation zone.' + exactNote, how.precision < 2); return; }
     status('Inside the zone. Finding the quickest walk out…');
     try {
       const res = await SafeRoute.nearestSafeRoute(start, polys);
@@ -726,7 +734,7 @@ ol.dirs small { color: var(--muted); }
         <button class="btn alt" type="button" id="practiseRoute">Practise this walk</button>`;
       $('#routeCard').hidden = false;
       $('#practiseRoute').addEventListener('click', () => { scenSel.value = 'tsunami'; paintScen(); $('#walkEst').value = m; showTab('practice'); });
-      status('Route found. Walk, don’t drive.');
+      status('Route found. Walk, don’t drive.' + exactNote, how.precision < 2);
     } catch (e) {
       status('Could not work out a walking route right now (' + e.message + '). Use the map to find the nearest high ground outside the blue area.', true);
     }
@@ -738,10 +746,10 @@ ol.dirs small { color: var(--muted); }
     try {
       const hits = await SafeRoute.geocode(q);
       if (!hits.length) { status('No Hawke’s Bay address found. Try adding the suburb or town.', true); return; }
-      if (hits.length === 1) return checkPlace(hits[0].lon, hits[0].lat, hits[0].label);
+      if (hits.length === 1 || hits[0].precision > hits[1].precision) { $('#matched').textContent = 'Showing: ' + hits[0].label; return checkPlace(hits[0].lon, hits[0].lat, hits[0].label, hits[0]); }
       status('Which one?');
       $('#results').innerHTML = hits.map((h, i) => `<li><button type="button" data-i="${i}">${esc(h.label)}</button></li>`).join('');
-      $('#results').onclick = ev => { const b = ev.target.closest('button'); if (b) { const h = hits[Number(b.dataset.i)]; $('#addr').value = h.label.split(',').slice(0, 3).join(','); checkPlace(h.lon, h.lat, h.label); } };
+      $('#results').onclick = ev => { const b = ev.target.closest('button'); if (b) { const h = hits[Number(b.dataset.i)]; $('#addr').value = h.label.split(',').slice(0, 3).join(','); $('#matched').textContent = 'Showing: ' + h.label; checkPlace(h.lon, h.lat, h.label, h); } };
     } catch (err) { status('Address search is not responding. Check your connection and try again.', true); }
   });
   $('#locBtn').addEventListener('click', () => {
@@ -753,7 +761,7 @@ ol.dirs small { color: var(--muted); }
   initMap();
   getZoneData().catch(() => {});
   const lastPlace = store.get('place', null);
-  if (lastPlace) { $('#addr').value = (lastPlace.label || '').split(',').slice(0, 3).join(','); checkPlace(lastPlace.lon, lastPlace.lat, lastPlace.label); }
+  if (lastPlace) { $('#addr').value = (lastPlace.label || '').split(',').slice(0, 3).join(','); checkPlace(lastPlace.lon, lastPlace.lat, lastPlace.label, { precision: lastPlace.precision == null ? 2 : lastPlace.precision }); }
 
   renderPlace(); renderPack(); renderHistory();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

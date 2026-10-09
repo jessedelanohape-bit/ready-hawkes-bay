@@ -1,5 +1,5 @@
 // Keeps the app and the last-loaded tsunami zone available offline.
-const CACHE = 'ready-hb-v1';
+const CACHE = 'ready-hb-v2';
 const SHELL = ['./', 'index.html', 'route.js', 'icon.svg', 'manifest.webmanifest',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'];
