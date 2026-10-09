@@ -59,16 +59,19 @@
     verts.sort((a, b) => metres(start, a) - metres(start, b));
     const dirs = [];
     for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; dirs.push([Math.cos(a), Math.sin(a)]); }
-    const picked = [];
+    const picked = [], perSector = {};
     for (let i = 0; i < verts.length && i < o.scan && picked.length < o.max; i++) {
       const v = verts[i];
       if (picked.some(c => metres(c, v) < o.spacing)) continue;
+      // at most a few candidates per 30-degree sector, so one long nearby edge cannot crowd out other directions
+      const sector = Math.floor(bearing(start, v) / 30);
+      if ((perSector[sector] || 0) >= (o.perSector || 4)) continue;
       // try the direction pointing away from the start first, then the rest
       const away = [v[0] - start[0], v[1] - start[1]];
       const order = dirs.slice().sort((d1, d2) => (d2[0] * away[0] + d2[1] * away[1]) - (d1[0] * away[0] + d1[1] * away[1]));
       for (const d of order) {
         const c = offset(v, d[0] * o.step, d[1] * o.step);
-        if (!inZone(c, polys) && (!o.clear || edgeDistance(c, polys) >= o.clear)) { picked.push(c); break; }
+        if (!inZone(c, polys) && (!o.clear || edgeDistance(c, polys) >= o.clear)) { picked.push(c); perSector[sector] = (perSector[sector] || 0) + 1; break; }
       }
     }
     return picked;
@@ -205,6 +208,15 @@
     if (!cands.length) throw new Error('Could not find a point outside the zone nearby');
     let ranked = await rankCandidates(start, cands, polys, fetchImpl, opts.clear || 0);
     let straight = false;
+    // Prefer higher ground: ground lower than 10 m above sea level costs up to 45 s per metre, so a slightly longer
+    // walk to a rise beats a quick hop to a low paddock, while a hill an hour away never wins.
+    if (ranked.length) {
+      const top = ranked.slice(0, 20);
+      const el = await elevations(top.map(r => r.point), fetchImpl);
+      if (el) top.forEach((r, i) => { r.elevation = el[i]; r.score = r.duration + Math.max(0, 10 - el[i]) * 45; });
+      else top.forEach(r => { r.score = r.duration; });
+      ranked = top.sort((a, b) => a.score - b.score);
+    }
     if (!ranked.length) {
       // No routing service (offline?): fall back to straight-line directions to the nearest safe points.
       straight = true;
@@ -219,12 +231,20 @@
     }
     const routes = [];
     for (const c of chosen) {
-      if (straight) { routes.push({ geometry: { type: 'LineString', coordinates: [start, c.point] }, duration: c.duration, distance: c.distance, end: c.point, steps: [], bearing: c.bearing, straight: true }); continue; }
-      try { const r = c.route || await route(start, c.point, fetchImpl); r.bearing = c.bearing; routes.push(r); } catch (_) {}
+      if (straight) { routes.push({ geometry: { type: 'LineString', coordinates: [start, c.point] }, duration: c.duration, distance: c.distance, end: c.point, steps: [], bearing: c.bearing, straight: true, score: c.distance }); continue; }
+      try { const r = c.route || await route(start, c.point, fetchImpl); r.bearing = c.bearing; r.elevation = c.elevation; r.score = c.score != null ? c.score : r.duration; r.edge = edgeDistance(r.end, polys); routes.push(r); } catch (_) {}
     }
     if (!routes.length) throw new Error('No walking route out of the zone was found');
-    routes.sort((a, b) => a.duration - b.duration);
+    routes.sort((a, b) => a.score - b.score);
     return { inside: true, routes, straight };
+  }
+  // Height above sea level for each point (Open-Meteo, free, no key). null when the service cannot be reached.
+  async function elevations(points, fetchImpl) {
+    try {
+      const url = 'https://api.open-meteo.com/v1/elevation?latitude=' + points.map(p => p[1].toFixed(5)).join(',') + '&longitude=' + points.map(p => p[0].toFixed(5)).join(',');
+      const j = await getJSON(url, fetchImpl);
+      return Array.isArray(j.elevation) && j.elevation.length === points.length ? j.elevation.map(Number) : null;
+    } catch (_) { return null; }
   }
   async function nearestSafeRoute(start, polys, fetchImpl, force) {
     const res = await safeRoutes(start, polys, fetchImpl, force, 1);
@@ -232,6 +252,6 @@
   }
   const compass = deg => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
 
-  const api = { polygonsFromGeoJSON, inZone, edgeDistance, serverInZone, metres, safeCandidates, loadZone, geocode, nearestSafeRoute, safeRoutes, compass, route, ZONE_LAYER };
+  const api = { polygonsFromGeoJSON, inZone, edgeDistance, serverInZone, metres, safeCandidates, loadZone, geocode, nearestSafeRoute, safeRoutes, compass, route, elevations, ZONE_LAYER };
   if (typeof module !== 'undefined') module.exports = api; else root.SafeRoute = api;
 })(typeof window !== 'undefined' ? window : globalThis);

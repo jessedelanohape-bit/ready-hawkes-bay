@@ -202,7 +202,7 @@ ol.dirs small { color: var(--muted); }
   <div class="brand"><h1>Ready Hawke's Bay</h1><small>Your emergency plan, for where you live</small></div>
   <button class="sos" id="sosBtn" type="button">Emergency now</button>
 </header>
-<div class="proto">Prototype for testing (version 8). In a real emergency, follow Civil Defence and emergency services.</div>
+<div class="proto">Prototype for testing (version 9). In a real emergency, follow Civil Defence and emergency services.</div>
 
 <main>
   <!-- MY PLACE -->
@@ -365,7 +365,7 @@ ol.dirs small { color: var(--muted); }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="route.js?v=8"></script>
+<script src="route.js?v=9"></script>
 <script>
 (function () {
   const store = {
@@ -764,7 +764,7 @@ ol.dirs small { color: var(--muted); }
     if (!res.routes || !res.routes.length) { box().innerHTML = '<b>No route could be worked out.</b> Head inland or uphill now, away from the coast and rivers. <button type="button" class="close" id="actMap" style="margin-top:8px">Open the map</button>'; return; }
     const NAMES = ['Plan A', 'Plan B', 'Plan C'];
     box().innerHTML = `<b>${res.zone === 'in' ? 'You are in the tsunami zone.' : 'Treat your spot as in the zone.'} Your ways out:</b>
-      <div class="opts" style="margin-top:8px">${res.routes.map((o, i) => `<button type="button" data-i="${i}" aria-checked="${i === 0}" style="--c:${['#e8a317', '#7b4fc9', '#1f9e8a'][i]}"><span class="opt-name">${NAMES[i]}${i === 0 ? ' · quickest' : ''}</span><span class="opt-time">${mins(o.duration)} min</span><span class="opt-meta">${km(o.distance)}, head ${SafeRoute.compass(o.bearing)}${o.straight ? ' (straight line, no map service)' : ''}</span></button>`).join('')}</div>
+      <div class="opts" style="margin-top:8px">${res.routes.map((o, i) => `<button type="button" data-i="${i}" aria-checked="${i === 0}" style="--c:${['#e8a317', '#7b4fc9', '#1f9e8a'][i]}"><span class="opt-name">${NAMES[i]}${i === 0 ? ' · best' : ''}</span><span class="opt-time">${mins(o.duration)} min</span><span class="opt-meta">${km(o.distance)}, head ${SafeRoute.compass(o.bearing)}${o.straight ? ' (straight line, no map service)' : ''}</span></button>`).join('')}</div>
       ${a.routeNote ? `<p style="margin-top:8px">${a.routeNote}</p>` : ''}
       <button type="button" class="close" id="actMap" style="margin-top:8px">Open the map and directions</button>`;
     box().querySelector('.opts').onclick = ev => { const b = ev.target.closest('button[data-i]'); if (b && res.pick) { res.pick(Number(b.dataset.i)); box().querySelectorAll('.opts button').forEach(x => x.setAttribute('aria-checked', String(x === b))); } };
@@ -781,7 +781,7 @@ ol.dirs small { color: var(--muted); }
 
 
   /* ---------- address, zone and route ---------- */
-  const diag = {}; const showDiag = () => { $('#diag').textContent = 'v8 \u00b7 ' + Object.entries(diag).map(([k, v]) => k + ': ' + v).join(' \u00b7 '); };
+  const diag = {}; const showDiag = () => { $('#diag').textContent = 'v9 \u00b7 ' + Object.entries(diag).map(([k, v]) => k + ': ' + v).join(' \u00b7 '); };
   const status = (msg, err) => { const el = $('#status'); el.textContent = msg; el.classList.toggle('err', !!err); };
   let routeGroup = null, map = null, zoneLayer = null, startMarker = null, endMarker = null, routeLine = null, polys = null, zonePromise = null;
   const HB = [-39.49, 176.9];
@@ -853,7 +853,7 @@ ol.dirs small { color: var(--muted); }
     }
     const lead = zone === 'in' ? 'Inside the zone.' : zone === 'near' ? (serverIn === null ? 'Could not double-check with the council map service, so planning as if you are in the zone.' : 'Within ' + edge + ' m of the zone edge, so planning as if you are in it.') : 'Not confirmed, so planning as if you are in the zone.';
     status(lead + ' Finding your ways out\u2026', true);
-    const routeOpts = zone === 'in' ? { step: 150, clear: 100 } : { step: 450, clear: 400 };
+    const routeOpts = zone === 'in' ? { step: 350, clear: 300 } : { step: 600, clear: 500 };
     try {
       const res = await SafeRoute.safeRoutes(start, polys, undefined, true, 3, routeOpts);
       const routes = res.routes;
@@ -882,15 +882,18 @@ ol.dirs small { color: var(--muted); }
         $('#routeCard').innerHTML = `
           <h3>${routes.length > 1 ? 'Your ' + routes.length + ' ways out' : 'Your way out'}</h3>
           <div class="opts" role="radiogroup" aria-label="Route options">${routes.map((o, i) => `<button type="button" role="radio" aria-checked="${i === sel}" data-i="${i}" style="--c:${COLORS[i]}">
-            <span class="opt-name">${NAMES[i]}${i === 0 ? ' \u00b7 quickest' : ''}</span>
+            <span class="opt-name">${NAMES[i]}${i === 0 ? (routes.every(x => x.duration >= o.duration) ? ' \u00b7 quickest' : ' \u00b7 best') : ''}</span>
             <span class="opt-time">${mins(o.duration)} min</span>
-            <span class="opt-meta">${km(o.distance)}, heading ${SafeRoute.compass(o.bearing)}${o.straight ? ' (straight line: no map service, so follow roads that way)' : ''}</span></button>`).join('')}</div>
+            <span class="opt-meta">${km(o.distance)}, heading ${SafeRoute.compass(o.bearing)}${o.elevation != null ? ', ' + Math.round(o.elevation) + ' m above sea level' : ''}${o.straight ? ' (straight line: no map service, so follow roads that way)' : ''}</span></button>`).join('')}</div>
           <div class="verdict ${v[0]}">${NAMES[sel]}: about ${m} minute${m === 1 ? '' : 's'} on foot. ${v[1]}</div>
+          <p class="src">Each safe point is at least ${zone === 'in' ? 300 : 500} m outside the blue zone${r.edge ? ' (this one is about ' + Math.round(r.edge) + ' m clear)' : ''}, and higher ground is preferred when it is close enough. Reaching it means you are out of the modelled wave; keep walking inland or uphill after that if you can. You do not need to reach a hill like Te Mata Peak, which is too far to walk in 15 minutes.</p>
           ${r.steps.length ? `<details><summary style="cursor:pointer;font-weight:600">Step-by-step directions for ${NAMES[sel]}</summary><ol class="dirs">${r.steps.map(s => `<li>${esc(s.text)} <small>${km(s.distance)}</small></li>`).join('')}</ol></details>` : ''}
           <p class="src">Know at least two routes: after a big quake a road or bridge on one may be blocked. Walking times assume about 5 km/h on mapped roads and paths. Always follow official instructions.</p>
-          <button class="btn alt" type="button" id="practiseRoute">Practise ${NAMES[sel]}</button>`;
+          <button class="btn alt" type="button" id="practiseRoute">Practise ${NAMES[sel]}</button>
+          <button class="btn alt" type="button" id="changeAddr">Check a different address</button>`;
         $('#routeCard').hidden = false;
         $('#routeCard .opts').onclick = ev => { const b = ev.target.closest('button[data-i]'); if (b) pick(Number(b.dataset.i)); };
+        $('#changeAddr').addEventListener('click', () => { $('#addrForm').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('#addr').focus(); });
         $('#practiseRoute').addEventListener('click', () => { scenSel.value = 'tsunami'; paintScen(); $('#walkEst').value = m; showTab('practice'); });
       };
       diag.routes = routes.length + (res.straight ? ' (straight line)' : ''); showDiag();
