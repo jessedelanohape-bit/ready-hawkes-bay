@@ -1,0 +1,9 @@
+{
+  "name": "Ready Hawke's Bay",
+  "short_name": "Ready HB",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f6f8",
+  "theme_color": "#1f5f9e",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

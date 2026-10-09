@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Ready Hawke's Bay</title>
+<meta name="description" content="Type your Hawke's Bay address to see if you're in the tsunami zone and get a walking route to the nearest safe point.">
+<meta name="theme-color" content="#1f5f9e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: phone-first single column app, sticky header with an emergency button, tab bar at the bottom. */
+:root {
+  --bg: #f3f6f8;
+  --surface: #ffffff;
+  --ink: #12222e;
+  --muted: #546575;
+  --line: #d6dee5;
+  --zone: #1f5f9e;        /* tsunami blue zone */
+  --zone-soft: #e3eef8;
+  --signal: #e8a317;      /* safety amber */
+  --signal-ink: #3a2700;
+  --danger: #c4372b;
+  --good: #2c8a4b;
+  --warn: #c98a00;
+  --font-display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d161d; --surface: #15212b; --ink: #e6eef4; --muted: #9aabb9; --line: #2a3a47;
+  --zone: #6aa8e4; --zone-soft: #17304a; --signal: #f0b33a; --signal-ink: #2a1c00;
+  --danger: #ef6a5e; --good: #4fbf73; --warn: #e8b13a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0d161d; --surface: #15212b; --ink: #e6eef4; --muted: #9aabb9; --line: #2a3a47;
+  --zone: #6aa8e4; --zone-soft: #17304a; --signal: #f0b33a; --signal-ink: #2a1c00;
+  --danger: #ef6a5e; --good: #4fbf73; --warn: #e8b13a; color-scheme: dark }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.1; text-wrap: balance; margin: 0; letter-spacing: .01em; }
+h2 { font-size: 1.75rem; }
+h3 { font-size: 1.25rem; }
+p { margin: 0; }
+a { color: var(--zone); }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--zone); color: #fff; padding-block: 10px; padding-inline: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; flex-direction: column; }
+.brand h1 { font-size: 1.5rem; text-transform: uppercase; letter-spacing: .04em; }
+.brand small { font-size: .8rem; opacity: .85; }
+.sos { background: var(--danger); color: #fff; border: 0; border-radius: 999px; padding: 10px 16px; font-family: var(--font-display); font-size: 1.1rem; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+.proto { background: var(--signal); color: var(--signal-ink); font-size: .85rem; padding: 6px 16px; text-align: center; }
+
+main { max-width: 640px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 110px; display: grid; gap: 20px; }
+.panel { display: grid; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.lead { color: var(--muted); }
+.label { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, 1fr); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.tabs button { background: none; border: 0; padding: 12px 4px 14px; display: grid; gap: 2px; justify-items: center; color: var(--muted); font-weight: 600; font-size: .9rem; }
+.tabs button svg { width: 24px; height: 24px; }
+.tabs button[aria-selected="true"] { color: var(--zone); box-shadow: inset 0 3px 0 var(--zone); }
+
+.choice { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice button, .pill { border: 1.5px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 14px; font-weight: 600; }
+.choice button[aria-pressed="true"] { border-color: var(--zone); background: var(--zone-soft); color: var(--ink); }
+select, input[type="text"], input[type="number"] { font: inherit; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; }
+label.field { display: grid; gap: 6px; font-weight: 600; }
+
+.zone-banner { border-radius: 12px; padding: 16px; display: grid; gap: 6px; }
+.zone-in { background: var(--zone); color: #fff; }
+.zone-in a { color: #fff; }
+.zone-out { background: var(--zone-soft); }
+.zone-unsure { background: var(--surface); border: 2px dashed var(--zone); }
+
+.hazards { display: grid; gap: 10px; }
+.hz { display: grid; grid-template-columns: 6px 1fr; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 12px 0; overflow: hidden; }
+.hz .bar { border-radius: 0 4px 4px 0; }
+.hz.high .bar { background: var(--danger); }
+.hz.med .bar { background: var(--warn); }
+.hz.low .bar { background: var(--line); }
+.hz h3 { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.hz .lvl { font-family: var(--font-body); font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.hz p { color: var(--muted); }
+.hz p strong { color: var(--ink); }
+
+/* Pack */
+.steppers { display: grid; gap: 4px; }
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px; border-bottom: 1px solid var(--line); }
+.stepper:last-child { border-bottom: 0; }
+.stepper .who { display: grid; }
+.stepper .who small { color: var(--muted); }
+.ctl { display: flex; align-items: center; gap: 4px; }
+.ctl button { width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); font-size: 1.3rem; line-height: 1; }
+.ctl output { min-width: 2ch; text-align: center; font-family: var(--font-display); font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.total { background: var(--zone-soft); border-radius: 10px; padding: 12px; display: grid; gap: 2px; }
+.total b { font-family: var(--font-display); font-size: 2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.total span { font-size: .85rem; color: var(--muted); }
+.kit-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.meter { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--good); width: 0; transition: width .3s; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; }
+.checks li { border-bottom: 1px solid var(--line); }
+.checks li:last-child { border-bottom: 0; }
+.checks label { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: start; padding-block: 10px; cursor: pointer; }
+.checks input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--good); }
+.checks .qty { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.checks input:checked ~ span:not(.qty) { text-decoration: line-through; color: var(--muted); }
+details.kit > summary { list-style: none; cursor: pointer; }
+details.kit > summary::-webkit-details-marker { display: none; }
+ol.steps { margin: 0; padding-left: 1.3rem; display: grid; gap: 8px; }
+
+/* Practice */
+.clock { font-family: var(--font-display); font-size: clamp(4rem, 22vw, 7rem); line-height: 1; text-align: center; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.phase { text-align: center; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-size: .85rem; }
+.big { border: 0; border-radius: 12px; padding: 18px; font-family: var(--font-display); font-size: 1.5rem; text-transform: uppercase; letter-spacing: .04em; width: 100%; }
+.big.go { background: var(--zone); color: #fff; }
+.big.stop { background: var(--signal); color: var(--signal-ink); }
+.big.ghost { background: transparent; border: 2px solid var(--line); font-size: 1.1rem; }
+.delays { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.delays button { border: 1.5px solid var(--line); background: var(--surface); border-radius: 10px; padding: 10px; font-weight: 600; text-align: left; }
+.delays button.hit { border-color: var(--warn); }
+.window { display: grid; gap: 6px; }
+.track { position: relative; height: 28px; border-radius: 8px; background: var(--line); overflow: hidden; }
+.track .fill { position: absolute; inset: 0 auto 0 0; }
+.track .fill.ready { background: var(--zone); }
+.track .fill.walk { background: var(--signal); }
+.track .limit { position: absolute; top: -4px; bottom: -4px; width: 3px; background: var(--danger); }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: .85rem; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.verdict { border-radius: 12px; padding: 14px 16px; font-weight: 700; }
+.verdict.green { background: color-mix(in srgb, var(--good) 18%, var(--surface)); }
+.verdict.amber { background: color-mix(in srgb, var(--warn) 22%, var(--surface)); }
+.verdict.red { background: color-mix(in srgb, var(--danger) 18%, var(--surface)); }
+table.hist { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.hist th, table.hist td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); font-size: .9rem; }
+table.hist th { color: var(--muted); font-weight: 600; }
+
+/* Emergency overlay */
+.sheet { position: fixed; inset: 0; z-index: 20; background: var(--danger); color: #fff; overflow-y: auto; padding-inline: 16px; padding-block: calc(env(safe-area-inset-top, 0px) + 16px) calc(env(safe-area-inset-bottom, 0px) + 24px); }
+.sheet-in { max-width: 560px; margin: 0 auto; display: grid; gap: 16px; }
+.sheet h2 { font-size: 2.4rem; text-transform: uppercase; }
+.sheet .step { background: rgba(0,0,0,.18); border-radius: 12px; padding: 14px 16px; display: grid; gap: 4px; }
+.sheet .step b { font-family: var(--font-display); font-size: 1.5rem; text-transform: uppercase; letter-spacing: .03em; }
+.sheet .close { justify-self: end; background: rgba(255,255,255,.18); color: #fff; border: 0; border-radius: 999px; padding: 8px 16px; font-weight: 700; }
+.sheet .scen { display: flex; flex-wrap: wrap; gap: 8px; }
+.sheet .scen button { border: 2px solid rgba(255,255,255,.6); background: transparent; color: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 700; }
+.sheet .scen button[aria-pressed="true"] { background: #fff; color: var(--danger); }
+.sheet a { color: #fff; }
+
+.src { font-size: .82rem; color: var(--muted); }
+.search { display: flex; gap: 8px; }
+.search input { flex: 1; min-width: 0; }
+.btn { border: 0; border-radius: 8px; padding: 10px 16px; font-weight: 700; background: var(--zone); color: #fff; white-space: nowrap; }
+.btn.alt { background: transparent; color: var(--zone); border: 1.5px solid var(--zone); }
+.results { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.results button { width: 100%; text-align: left; border: 1.5px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; }
+#map { height: 340px; border-radius: 12px; border: 1px solid var(--line); background: var(--zone-soft); }
+.leaflet-container { font-family: var(--font-body); }
+.status { font-weight: 600; }
+.status.err { color: var(--danger); }
+.route-sum { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+ol.dirs { margin: 0; padding-left: 1.3rem; display: grid; gap: 4px; }
+ol.dirs small { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px)} body{margin:0}</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1>Ready Hawke's Bay</h1><small>Your emergency plan, for where you live</small></div>
+  <button class="sos" id="sosBtn" type="button">Emergency now</button>
+</header>
+<div class="proto">Prototype for testing. In a real emergency, follow Civil Defence and emergency services.</div>
+
+<main>
+  <!-- MY PLACE -->
+  <section class="panel" id="tab-place" role="tabpanel" aria-labelledby="t-place">
+    <div class="card">
+      <h2>Your place</h2>
+      <p class="lead">Type your address to check the tsunami zone and get a walking route to the nearest safe point.</p>
+      <form id="addrForm" class="search" autocomplete="street-address">
+        <label for="addr" class="label" hidden>Address</label>
+        <input type="text" id="addr" placeholder="Type your address, e.g. 12 Marine Parade, Napier" aria-label="Your address">
+        <button class="btn" type="submit">Find</button>
+      </form>
+      <button class="btn alt" type="button" id="locBtn">Use my current location</button>
+      <p class="status" id="status" aria-live="polite"></p>
+      <ul class="results" id="results"></ul>
+    </div>
+
+    <div id="map" role="region" aria-label="Map of the tsunami zone and your route"></div>
+    <p class="src">Blue area: official Hawke's Bay tsunami evacuation zone (Hawke's Bay Regional Council, updated Aug 2026, CC BY 4.0). Map &copy; OpenStreetMap contributors. Walking routes by the FOSSGIS OSRM service. Your address is sent to these services to search and route; it is not stored by this app.</p>
+
+    <div class="card" id="routeCard" hidden></div>
+
+    <div class="card">
+      <label class="field" for="area">Area (for the hazard list below)
+        <select id="area">
+          <option value="napier">Napier</option>
+          <option value="hastings">Hastings</option>
+          <option value="havelock">Havelock North</option>
+          <option value="coast">Coastal settlement (Haumoana, Te Awanga, Clive, Westshore, Bay View, Wairoa coast...)</option>
+          <option value="chb">Central Hawke's Bay</option>
+          <option value="wairoa">Wairoa</option>
+          <option value="rural">Rural hill country</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="zoneBanner"></div>
+
+    <div>
+      <p class="label" style="margin-bottom:8px">What could affect you</p>
+      <div class="hazards" id="hazards"></div>
+    </div>
+
+    <div class="card">
+      <h3>Your household plan</h3>
+      <label class="field" for="meet">Meeting place if you get separated
+        <input type="text" id="meet" placeholder="For example: the top of Bluff Hill lookout">
+      </label>
+      <label class="field" for="contact">Out-of-region contact everyone will text
+        <input type="text" id="contact" placeholder="For example: Aunty Mere in Palmerston North, 021 000 0000">
+      </label>
+      <p class="src">Saved on this device only.</p>
+    </div>
+  </section>
+
+  <!-- PACK -->
+  <section class="panel" id="tab-pack" role="tabpanel" aria-labelledby="t-pack" hidden>
+    <div class="card">
+      <h2>Who's in your household?</h2>
+      <p class="lead">Every amount below is worked out from this.</p>
+      <div class="steppers" id="steppers"></div>
+      <div>
+        <span class="label">Plan for</span>
+        <div class="choice" id="daysChoice" style="margin-top:6px">
+          <button type="button" data-v="3" aria-pressed="false">3 days (minimum)</button>
+          <button type="button" data-v="7" aria-pressed="true">7 days (recommended)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="totals" id="totals"></div>
+
+    <div id="kits" class="panel"></div>
+
+    <div class="card">
+      <h3>How to pack a grab bag</h3>
+      <ol class="steps">
+        <li>Use a backpack so your hands are free. Each person carries a bag they can manage for an hour of walking.</li>
+        <li>Heavy things (water, food) go in the middle, close to your back. Soft clothes go around them.</li>
+        <li>Seal documents, medicine and electronics in zip-lock or dry bags. Flooding and rain are likely.</li>
+        <li>Torch, first aid kit and a snack go in the top or outside pocket.</li>
+        <li>Label each bag with the person's name and your out-of-region contact.</li>
+        <li>Keep the bags by the door you would leave from, with walking shoes beside them.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h3>Keep it ready</h3>
+      <p>Check water, food dates, batteries and medicine every six months, when the clocks change for daylight saving. Next check: <strong id="nextCheck"></strong>.</p>
+      <p class="src">Amounts follow Get Ready advice: at least 3 litres of water per person per day, for at least three days and ideally a week. <a href="https://getready.govt.nz/prepared/household/supplies/storing-water" target="_blank" rel="noopener">Storing water</a> · <a href="https://civildefence.govt.nz/cdem-sector/consistent-messages/readiness/have-emergency-supplies" target="_blank" rel="noopener">Emergency supplies</a></p>
+    </div>
+  </section>
+
+  <!-- PRACTICE -->
+  <section class="panel" id="tab-practice" role="tabpanel" aria-labelledby="t-practice" hidden>
+    <div class="card" id="drillSetup">
+      <h2>Practice your getaway</h2>
+      <p class="lead">Time how long your household takes to get out the door, then how long it takes to walk to safety.</p>
+      <label class="field" for="scenario">Scenario
+        <select id="scenario">
+          <option value="tsunami">Long or strong earthquake: local tsunami</option>
+          <option value="tsunami-night">Local tsunami, at night with torches</option>
+          <option value="flood">Flood warning: leave before water rises</option>
+          <option value="fire">Fire nearby: leave early</option>
+        </select>
+      </label>
+      <p class="src" id="scenarioNote"></p>
+      <button class="big go" id="startBtn" type="button">Start drill</button>
+    </div>
+
+    <div class="card" id="drillRun" hidden>
+      <p class="phase" id="phaseLabel">Getting ready</p>
+      <div class="clock" id="clock" aria-live="off">0:00</div>
+      <div id="readyTools" class="panel">
+        <p class="label">Tap what slows you down</p>
+        <div class="delays" id="delays"></div>
+        <button class="big stop" id="doorBtn" type="button">Out the door</button>
+      </div>
+      <div id="walkTools" class="panel" hidden>
+        <p class="lead" style="text-align:center">Walk your route to the nearest point outside the blue zone. Keep going once you get there.</p>
+        <button class="big stop" id="safeBtn" type="button">Reached safety</button>
+        <label class="field" for="walkEst">Not walking it today? Enter your estimated walk in minutes
+          <input type="number" id="walkEst" min="1" max="120" inputmode="numeric" placeholder="For example: 12">
+        </label>
+        <button class="big ghost" id="estBtn" type="button">Use my estimate</button>
+      </div>
+      <button class="big ghost" id="cancelBtn" type="button">Cancel drill</button>
+    </div>
+
+    <div class="card" id="drillResult" hidden></div>
+
+    <div class="card">
+      <h3>Your drill history</h3>
+      <div id="history"></div>
+    </div>
+    <p class="src">Practice drills never send alerts or messages to anyone. Hawke's Bay Emergency Management advises planning two routes out of the zone and practising them, including at night. <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">Tsunami advice</a></p>
+  </section>
+</main>
+
+<nav class="tabs" role="tablist">
+  <button id="t-place" role="tab" aria-selected="true" aria-controls="tab-place" data-tab="place" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>My place</button>
+  <button id="t-pack" role="tab" aria-selected="false" aria-controls="tab-pack" data-tab="pack" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8h12l-1 13H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><path d="M9 13h6"/></svg>Pack</button>
+  <button id="t-practice" role="tab" aria-selected="false" aria-controls="tab-practice" data-tab="practice" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/></svg>Practice</button>
+</nav>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-in">
+    <button class="close" id="sheetClose" type="button">Close</button>
+    <h2 id="sheetTitle">What's happening?</h2>
+    <div class="scen" id="sheetScen">
+      <button type="button" data-s="quake" aria-pressed="true">Earthquake</button>
+      <button type="button" data-s="flood" aria-pressed="false">Flood</button>
+      <button type="button" data-s="attack" aria-pressed="false">Armed attack</button>
+      <button type="button" data-s="outage" aria-pressed="false">Power or phones down</button>
+    </div>
+    <div id="sheetBody" class="sheet-in"></div>
+    <p style="font-weight:700">Life in danger: call 111.</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="route.js"></script>
+<script>
+(function () {
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('rhb-' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('rhb-' + k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  /* ---------- tabs ---------- */
+  function showTab(name) {
+    document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+    ['place', 'pack', 'practice'].forEach(t => { $('#tab-' + t).hidden = t !== name; });
+    store.set('tab', name);
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  const hashTab = (location.hash || '').slice(1);
+  showTab(['place', 'pack', 'practice'].includes(hashTab) ? hashTab : store.get('tab', 'place'));
+
+  function bindChoice(el, key, def, onChange) {
+    let val = store.get(key, def);
+    const paint = () => el.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === String(val))));
+    el.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      val = b.dataset.v; store.set(key, val); paint(); onChange(val);
+    });
+    paint();
+    return () => val;
+  }
+
+  /* ---------- my place ---------- */
+  const HAZ = {
+    tsunami: { name: 'Tsunami', act: 'If an earthquake is long (over a minute) or strong (hard to stand), walk out of the blue zone straight away. A local tsunami can arrive within 15 minutes. Don’t wait for a warning, and don’t drive.' },
+    quake: { name: 'Earthquake', act: '<strong>Drop, Cover, Hold.</strong> Hawke’s Bay sits near the Hikurangi Subduction Zone and has many active faults. Secure tall furniture and the hot water cylinder.' },
+    liq: { name: 'Liquefaction', act: 'Soft ground on the Heretaunga Plains and around Napier can turn to mud in a big quake. Expect damaged roads, pipes and sewers: store water and an emergency toilet.' },
+    flood: { name: 'River flooding', act: 'Cyclone Gabrielle (Feb 2023) flooded the Heretaunga Plains and Esk Valley. Move to higher ground early when warned. Never drive or walk through floodwater.' },
+    slip: { name: 'Landslide', act: 'Heavy rain can bring slips down on homes and roads. Leave if you see new cracks, hear rumbling or see trees tilting.' },
+    coast: { name: 'Coastal erosion and storm surge', act: 'The Haumoana to Clifton coast is eroding. Stay off the beach front in big swells and follow council evacuation advice.' },
+    fire: { name: 'Wildfire', act: 'Dry summers raise fire risk on the rural edge. Check the fire season before burning, and leave early if a fire threatens. Don’t wait to be told.' },
+    isolate: { name: 'Cut off for days', act: 'Gabrielle cut road, power and phone links for days. Plan for a week on your own supplies.' },
+    attack: { name: 'Armed attack in a crowded place', act: 'Rare (national threat level: possible). If it happens: <strong>Escape. Hide. Tell.</strong> Know the exits at events and busy places.' },
+    outage: { name: 'Power, phone or cyber outage', act: 'Keep some cash, a battery radio, a written contact list and a full fuel tank or charged power bank.' }
+  };
+  const AREAS = {
+    napier:   { tsunami: 'high', quake: 'high', liq: 'high', flood: 'med', coast: 'low', isolate: 'med', attack: 'low', outage: 'med' },
+    hastings: { quake: 'high', liq: 'high', flood: 'high', tsunami: 'med', isolate: 'med', attack: 'low', outage: 'med' },
+    havelock: { quake: 'high', flood: 'med', slip: 'med', liq: 'med', isolate: 'med', attack: 'low', outage: 'med' },
+    coast:    { tsunami: 'high', quake: 'high', coast: 'high', flood: 'high', liq: 'med', isolate: 'high', outage: 'med' },
+    chb:      { quake: 'high', flood: 'med', fire: 'med', slip: 'med', isolate: 'high', outage: 'med', tsunami: 'med' },
+    wairoa:   { flood: 'high', quake: 'high', isolate: 'high', tsunami: 'med', slip: 'med', outage: 'med' },
+    rural:    { slip: 'high', quake: 'high', fire: 'high', isolate: 'high', flood: 'med', outage: 'med' }
+  };
+  const LVL = { high: 'Higher risk', med: 'Some risk', low: 'Lower risk' };
+  const areaSel = $('#area');
+  areaSel.value = store.get('area', 'napier');
+  let zone = store.get('zone', 'unsure');
+  function renderPlace() {
+    const area = areaSel.value; store.set('area', area);
+    const z = zone;
+    const banner = $('#zoneBanner');
+    if (z === 'in') banner.innerHTML = '<div class="zone-banner zone-in"><h3>You are in the tsunami blue zone</h3><p>After a long or strong earthquake, walk out of the zone straight away, to higher ground or as far inland as you can. Your suggested route is below. Plan a second route too, and practise both.</p></div>';
+    else if (z === 'out') banner.innerHTML = '<div class="zone-banner zone-out"><h3>You are outside the tsunami blue zone</h3><p>Stay where you are after an earthquake unless told otherwise. If you work, study or visit inside the zone, plan a route from there too.</p></div>';
+    else banner.innerHTML = '<div class="zone-banner zone-unsure"><h3>Check your address</h3><p>Look up your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">Hawke’s Bay tsunami map</a>, Type your address above to check it against the official zone. Until then, plan as if you are in the zone.</p></div>';
+    const map = Object.assign({}, AREAS[area]);
+    if (z === 'in') map.tsunami = 'high';
+    if (z === 'out') delete map.tsunami;
+    const order = { high: 0, med: 1, low: 2 };
+    const keys = Object.keys(map).sort((a, b) => order[map[a]] - order[map[b]]);
+    $('#hazards').innerHTML = keys.map(k => `<div class="hz ${map[k]}"><span class="bar"></span><div><h3>${HAZ[k].name}<span class="lvl">${LVL[map[k]]}</span></h3><p>${HAZ[k].act}</p></div></div>`).join('') +
+      '<p class="src">Risk levels in this prototype are a general guide for each area, not a check of your property. The full app reads the <a href="https://www.hbhazards.co.nz" target="_blank" rel="noopener">Hawke’s Bay hazard portal</a> layers for your exact address.</p>';
+  }
+  areaSel.addEventListener('change', renderPlace);
+  ['meet', 'contact'].forEach(id => { const el = $('#' + id); el.value = store.get(id, ''); el.addEventListener('input', () => store.set(id, el.value)); });
+
+  /* ---------- pack ---------- */
+  const PEOPLE = [
+    { k: 'adults', label: 'Adults', sub: '18 and over', def: 2 },
+    { k: 'kids', label: 'Children', sub: '3 to 17', def: 2 },
+    { k: 'babies', label: 'Babies and toddlers', sub: 'Under 3', def: 0 },
+    { k: 'elders', label: 'Older people or extra care', sub: 'Medication, mobility', def: 0 },
+    { k: 'dogs', label: 'Dogs', sub: '', def: 1 },
+    { k: 'cats', label: 'Cats and small pets', sub: '', def: 0 }
+  ];
+  const hh = store.get('household', null) || Object.fromEntries(PEOPLE.map(p => [p.k, p.def]));
+  $('#steppers').innerHTML = PEOPLE.map(p => `<div class="stepper"><div class="who"><span>${p.label}</span>${p.sub ? `<small>${p.sub}</small>` : ''}</div><div class="ctl"><button type="button" data-k="${p.k}" data-d="-1" aria-label="One fewer ${p.label.toLowerCase()}">−</button><output id="n-${p.k}">${hh[p.k]}</output><button type="button" data-k="${p.k}" data-d="1" aria-label="One more ${p.label.toLowerCase()}">+</button></div></div>`).join('');
+  $('#steppers').addEventListener('click', e => {
+    const b = e.target.closest('button[data-k]'); if (!b) return;
+    const k = b.dataset.k; hh[k] = Math.max(0, Math.min(20, hh[k] + Number(b.dataset.d)));
+    $('#n-' + k).textContent = hh[k]; store.set('household', hh); renderPack();
+  });
+  const getDays = bindChoice($('#daysChoice'), 'days', '7', () => renderPack());
+
+  const ticks = store.get('ticks', {});
+  function kitItems() {
+    const days = Number(getDays());
+    const people = hh.adults + hh.kids + hh.babies + hh.elders;
+    const pets = hh.dogs + hh.cats;
+    const litres = people * 3 * days;
+    const grabPeople = Math.max(people, 1);
+    const meals = people * 3 * days;
+    const grab = [
+      ['Backpack, one each', grabPeople + ' bags'],
+      ['Water to carry (1 litre each)', grabPeople + ' L'],
+      ['Snacks for a day', grabPeople * 3 + ' snacks'],
+      ['Walking shoes, warm layer, raincoat, hat', grabPeople + ' sets'],
+      ['Torch with spare batteries', Math.max(1, Math.ceil(grabPeople / 2)) + ''],
+      ['Battery or wind-up radio', '1'],
+      ['First aid kit', '1'],
+      ['Prescription medicine for 7 days', hh.elders + hh.adults > 0 ? 'per person' : 'if needed'],
+      ['Phone charger and charged power bank', '1+'],
+      ['Copies of ID, insurance and prescriptions in a zip-lock bag', '1 set'],
+      ['Some cash in small notes', '$100+'],
+      ['Hand sanitiser and masks', grabPeople + '']
+    ];
+    if (hh.babies) grab.push(['Nappies, wipes, formula or baby food for a day', hh.babies + ' baby kit' + (hh.babies > 1 ? 's' : '')]);
+    if (hh.dogs) grab.push(['Lead, collar with tag, poo bags, a day of food', hh.dogs + ' dog' + (hh.dogs > 1 ? 's' : '')]);
+    if (hh.cats) grab.push(['Pet carrier and a day of food', hh.cats + '']);
+    if (hh.elders) grab.push(['Spare glasses, hearing aid batteries, mobility aids', hh.elders + '']);
+    const home = [
+      ['Stored drinking water (3 L per person per day)', litres + ' L'],
+      ['That is this many 1.5 litre bottles', Math.ceil(litres / 1.5) + ' bottles'],
+      ['Food that needs no cooking or fridge', meals + ' meals'],
+      ['Gas cooker or BBQ with spare fuel', '1'],
+      ['Can opener', '1'],
+      ['Emergency toilet: two buckets, bags, toilet paper', '1 set'],
+      ['Torches and spare batteries', Math.max(2, people) + ''],
+      ['Blankets or sleeping bags', people + '']
+    ];
+    if (pets) home.push(['Pet food and extra water for pets', days + ' days']);
+    if (hh.babies) home.push(['Nappies (about 8 a day each)', hh.babies * 8 * days + '']);
+    const car = [
+      ['Water', Math.max(2, people) + ' L'],
+      ['Snacks', '1 bag'],
+      ['Blanket', '1+'],
+      ['Torch', '1'],
+      ['First aid kit', '1'],
+      ['Phone charger cable for the car', '1'],
+      ['Walking shoes', people + ' pairs']
+    ];
+    return { litres, meals, people, days, kits: [
+      { id: 'grab', name: 'Grab bags', why: 'Carried when you leave on foot, for example out of the tsunami zone.', items: grab },
+      { id: 'home', name: 'Stay-at-home kit', why: `Sheltering at home for ${days} days without power, water or shops.`, items: home },
+      { id: 'car', name: 'Car kit', why: 'For being stuck on the road or leaving early for flood or fire.', items: car }
+    ] };
+  }
+  function renderPack() {
+    const d = kitItems();
+    $('#totals').innerHTML = `
+      <div class="total"><b>${d.people}</b><span>people</span></div>
+      <div class="total"><b>${d.litres}</b><span>litres of water</span></div>
+      <div class="total"><b>${d.meals}</b><span>meals</span></div>`;
+    $('#kits').innerHTML = d.kits.map((kit, ki) => {
+      const done = kit.items.filter((_, i) => ticks[kit.id + i]).length;
+      const pct = Math.round(done / kit.items.length * 100);
+      return `<details class="card kit" ${store.get('open-' + kit.id, ki === 0) ? 'open' : ''} data-kit="${kit.id}">
+        <summary><div class="kit-head"><h3>${kit.name}</h3><span class="label">${done} of ${kit.items.length} ready</span></div>
+        <p class="lead" style="margin-top:4px">${kit.why}</p>
+        <div class="meter" style="margin-top:10px"><i style="width:${pct}%"></i></div></summary>
+        <ul class="checks">${kit.items.map((it, i) => `<li><label><input type="checkbox" data-t="${kit.id + i}" ${ticks[kit.id + i] ? 'checked' : ''}><span>${esc(it[0])}</span><span class="qty">${esc(it[1])}</span></label></li>`).join('')}</ul>
+      </details>`;
+    }).join('');
+  }
+  $('#kits').addEventListener('change', e => {
+    const t = e.target.dataset.t; if (!t) return;
+    ticks[t] = e.target.checked; store.set('ticks', ticks); renderPack();
+  });
+  $('#kits').addEventListener('toggle', e => { const k = e.target.dataset && e.target.dataset.kit; if (k) store.set('open-' + k, e.target.open); }, true);
+
+  // next daylight-saving change in NZ: last Sunday of September, first Sunday of April
+  (function nextCheck() {
+    const now = new Date();
+    const cands = [];
+    for (let y = now.getFullYear(); y <= now.getFullYear() + 1; y++) {
+      const apr = new Date(y, 3, 1); apr.setDate(1 + (7 - apr.getDay()) % 7);
+      const sep = new Date(y, 8, 30); sep.setDate(30 - sep.getDay());
+      cands.push(apr, sep);
+    }
+    const next = cands.filter(d => d > now).sort((a, b) => a - b)[0];
+    $('#nextCheck').textContent = next.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ' (clocks change)';
+  })();
+
+  /* ---------- practice ---------- */
+  const SCEN = {
+    'tsunami': { win: 15, note: 'Target: out of the blue zone within 15 minutes of the shaking stopping, the earliest a local tsunami may arrive.', walk: true },
+    'tsunami-night': { win: 15, note: 'Same 15 minute target, in the dark. Use torches, not phone lights, to save battery.', walk: true },
+    'flood': { win: 30, note: 'Practice target: out the door and on higher ground within 30 minutes of a warning. Floods vary, so leave as early as you can.', walk: true },
+    'fire': { win: 15, note: 'Practice target: in the car with bags and pets within 15 minutes. Leaving early is the safest option.', walk: false }
+  };
+  const DELAYS = [
+    ['shoes', 'Finding shoes', 'Keep walking shoes by the bed and by the door.'],
+    ['bags', 'Bags not ready', 'Pack the grab bags now and keep them by the exit door.'],
+    ['pets', 'Catching pets', 'Keep the pet carrier and lead by the door. Practise getting pets in.'],
+    ['kids', 'Getting kids moving', 'Give each child one job (their bag, their shoes) and practise it.'],
+    ['meds', 'Finding medicine', 'Keep a week of medicine in each grab bag and rotate it.'],
+    ['keys', 'Keys, phone, wallet', 'Use one hook or bowl by the door for keys, wallet and phone.'],
+    ['dark', 'Too dark to see', 'Keep a torch by every bed.'],
+    ['other', 'Something else', 'Talk about what slowed you down and fix one thing before the next drill.']
+  ];
+  const fmt = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const scenSel = $('#scenario');
+  scenSel.value = store.get('scenario', 'tsunami');
+  const paintScen = () => { $('#scenarioNote').textContent = SCEN[scenSel.value].note; store.set('scenario', scenSel.value); };
+  scenSel.addEventListener('change', paintScen); paintScen();
+  $('#delays').innerHTML = DELAYS.map(d => `<button type="button" data-d="${d[0]}">${d[1]}</button>`).join('');
+
+  let run = null, timer = null, wake = null;
+  const tick = () => {
+    const now = Date.now();
+    const t = run.phase === 'ready' ? (now - run.t0) / 1000 : (now - run.tDoor) / 1000;
+    $('#clock').textContent = fmt(run.phase === 'ready' ? t : run.ready + t);
+  };
+  async function lockScreen() { try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (e) { wake = null; } }
+  function unlockScreen() { try { if (wake) wake.release(); } catch (e) {} wake = null; }
+  function setView(v) { $('#drillSetup').hidden = v !== 'setup'; $('#drillRun').hidden = v !== 'run'; $('#drillResult').hidden = v !== 'result'; }
+
+  $('#startBtn').addEventListener('click', () => {
+    run = { scen: scenSel.value, t0: Date.now(), phase: 'ready', delays: {} };
+    document.querySelectorAll('#delays button').forEach(b => b.classList.remove('hit'));
+    $('#phaseLabel').textContent = 'Getting ready';
+    $('#readyTools').hidden = false; $('#walkTools').hidden = true; $('#walkEst').value = '';
+    setView('run'); tick(); timer = setInterval(tick, 250); lockScreen();
+  });
+  $('#delays').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !run) return;
+    run.delays[b.dataset.d] = (run.delays[b.dataset.d] || 0) + 1; b.classList.add('hit');
+  });
+  $('#doorBtn').addEventListener('click', () => {
+    run.ready = (Date.now() - run.t0) / 1000; run.tDoor = Date.now();
+    if (!SCEN[run.scen].walk) return finish(0, 'none');
+    run.phase = 'walk'; $('#phaseLabel').textContent = 'Walking to safety';
+    $('#readyTools').hidden = true; $('#walkTools').hidden = false;
+  });
+  $('#safeBtn').addEventListener('click', () => finish((Date.now() - run.tDoor) / 1000, 'walked'));
+  $('#estBtn').addEventListener('click', () => {
+    const m = Number($('#walkEst').value);
+    if (!m || m < 1) { $('#walkEst').focus(); $('#walkEst').setAttribute('aria-invalid', 'true'); return; }
+    finish(m * 60, 'estimate');
+  });
+  $('#cancelBtn').addEventListener('click', () => { clearInterval(timer); unlockScreen(); run = null; setView('setup'); });
+
+  function finish(walk, how) {
+    clearInterval(timer); unlockScreen();
+    const sc = SCEN[run.scen]; const win = sc.win * 60;
+    const total = run.ready + walk;
+    const ratio = total / win;
+    const cls = ratio <= 0.8 ? 'green' : ratio <= 1 ? 'amber' : 'red';
+    const msg = cls === 'green' ? `Inside the ${sc.win} minute window with ${fmt(win - total)} to spare.` :
+                cls === 'amber' ? `Only just inside the ${sc.win} minute window. One delay could tip it over.` :
+                `${fmt(total - win)} over the ${sc.win} minute window. Work on the fixes below and try again.`;
+    const scale = Math.max(win, total) * 1.05;
+    const fixes = DELAYS.filter(d => run.delays[d[0]]).map(d => `<li>${d[2]}</li>`).join('');
+    const hist = store.get('history', []);
+    hist.unshift({ when: Date.now(), scen: run.scen, ready: Math.round(run.ready), walk: Math.round(walk), how, win: sc.win });
+    store.set('history', hist.slice(0, 20));
+    $('#drillResult').innerHTML = `
+      <h2>Drill result</h2>
+      <div class="verdict ${cls}">Total ${fmt(total)}. ${msg}</div>
+      <div class="window">
+        <div class="track" role="img" aria-label="Getting ready ${fmt(run.ready)}, walking ${fmt(walk)}, window ${sc.win} minutes">
+          <div class="fill walk" style="width:${(run.ready + walk) / scale * 100}%"></div>
+          <div class="fill ready" style="width:${run.ready / scale * 100}%"></div>
+          <div class="limit" style="left:${win / scale * 100}%"></div>
+        </div>
+        <div class="legend"><span><i style="background:var(--zone)"></i>Getting ready ${fmt(run.ready)}</span>${walk ? `<span><i style="background:var(--signal)"></i>Walking ${fmt(walk)}${how === 'estimate' ? ' (estimate)' : ''}</span>` : ''}<span><i style="background:var(--danger)"></i>${sc.win} min window</span></div>
+      </div>
+      <div><h3 style="margin-bottom:6px">What to fix</h3>${fixes ? `<ul class="steps" style="padding-left:1.2rem">${fixes}</ul>` : '<p class="lead">You didn’t tap any delays. Next time, tap what slows you down so the app can suggest fixes.</p>'}</div>
+      <button class="big go" type="button" id="againBtn">Try again</button>`;
+    $('#againBtn').addEventListener('click', () => setView('setup'));
+    run = null; setView('result'); renderHistory();
+  }
+  function renderHistory() {
+    const hist = store.get('history', []);
+    const names = { 'tsunami': 'Tsunami', 'tsunami-night': 'Tsunami, night', 'flood': 'Flood', 'fire': 'Fire' };
+    if (!hist.length) { $('#history').innerHTML = '<p class="lead">No drills yet. Your first one sets the time to beat.</p>'; return; }
+    $('#history').innerHTML = `<div style="overflow-x:auto"><table class="hist"><thead><tr><th>Date</th><th>Scenario</th><th>Ready</th><th>Walk</th><th>Total</th></tr></thead><tbody>${hist.map(h => {
+      const tot = h.ready + h.walk; const r = tot / (h.win * 60);
+      const c = r <= 0.8 ? 'var(--good)' : r <= 1 ? 'var(--warn)' : 'var(--danger)';
+      return `<tr><td>${new Date(h.when).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}</td><td>${names[h.scen] || h.scen}</td><td>${fmt(h.ready)}</td><td>${h.how === 'none' ? '–' : fmt(h.walk) + (h.how === 'estimate' ? '*' : '')}</td><td style="color:${c};font-weight:700">${fmt(tot)}</td></tr>`;
+    }).join('')}</tbody></table></div><p class="src">* estimated walk</p>`;
+  }
+
+  /* ---------- emergency sheet ---------- */
+  const SHEET = {
+    quake: () => {
+      const inZone = zone !== 'out';
+      return `<div class="step"><b>1. Drop, Cover, Hold</b><span>Get down, get under something sturdy, hold on until the shaking stops.</span></div>
+      <div class="step"><b>2. Long or strong? Get gone</b><span>${inZone ? 'Shaking over a minute, or hard to stand: walk out of the blue zone now. Don’t wait for a warning. Don’t drive.' : 'You told us you are outside the blue zone. Stay away from the coast, rivers and streams.'}</span></div>
+      <div class="step"><b>3. Keep moving</b><span>Once outside the zone, keep going to make room for others. Don’t go back for children at school: schools evacuate on their own plan.</span></div>
+      <div class="step"><b>4. Stay out</b><span>Stay away from the coast for at least 24 hours, or until Civil Defence gives the all-clear.</span></div>`;
+    },
+    flood: () => `<div class="step"><b>1. Move to higher ground</b><span>Go now if you are told to, or if water is rising. Take your grab bags and pets.</span></div>
+      <div class="step"><b>2. Never drive through water</b><span>Even shallow, fast-moving water can knock you over or sweep a car away.</span></div>
+      <div class="step"><b>3. Turn off power at the switchboard</b><span>Only if it is safe and dry to reach.</span></div>
+      <div class="step"><b>4. Listen to local radio</b><span>Follow Hawke’s Bay Civil Defence updates.</span></div>`,
+    attack: () => `<div class="step"><b>Escape</b><span>Get away from the threat if it is safe. Leave belongings behind. Help others if you can, but don’t wait.</span></div>
+      <div class="step"><b>Hide</b><span>If you can’t get away, hide out of sight. Lock or barricade the door, silence your phone, stay quiet.</span></div>
+      <div class="step"><b>Tell</b><span>Call 111 when it is safe. Say where you are, what you saw, and where the attacker went.</span></div>
+      <p>Guidance from <a href="https://www.police.govt.nz/advice-services/crowded-places/know-what-do" target="_blank" rel="noopener">NZ Police</a>.</p>`,
+    outage: () => `<div class="step"><b>1. Use your plan, not your phone</b><span>Your meeting place: ${esc(store.get('meet', '') || 'not set yet')}. Your contact: ${esc(store.get('contact', '') || 'not set yet')}.</span></div>
+      <div class="step"><b>2. Battery radio</b><span>Tune to local radio for Civil Defence updates.</span></div>
+      <div class="step"><b>3. Text, don’t call</b><span>Texts get through more often when networks are busy. Keep calls for 111.</span></div>
+      <div class="step"><b>4. Trust official sources only</b><span>In a cyber attack, fake messages spread fast. Check against Civil Defence, Police or the NCSC.</span></div>`
+  };
+  let sheetScen = 'quake';
+  const paintSheet = () => {
+    document.querySelectorAll('#sheetScen button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.s === sheetScen)));
+    $('#sheetBody').innerHTML = SHEET[sheetScen]();
+  };
+  $('#sheetScen').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; sheetScen = b.dataset.s; paintSheet(); });
+  $('#sosBtn').addEventListener('click', () => { paintSheet(); $('#sheet').hidden = false; $('#sheetClose').focus(); });
+  $('#sheetClose').addEventListener('click', () => { $('#sheet').hidden = true; $('#sosBtn').focus(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) $('#sheetClose').click(); });
+
+
+  /* ---------- address, zone and route ---------- */
+  const status = (msg, err) => { const el = $('#status'); el.textContent = msg; el.classList.toggle('err', !!err); };
+  let map = null, zoneLayer = null, startMarker = null, endMarker = null, routeLine = null, polys = null, zonePromise = null;
+  const HB = [-39.49, 176.9];
+  function initMap() {
+    if (map || typeof L === 'undefined') return;
+    map = L.map('map', { zoomControl: true }).setView(HB, 11);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+  }
+  function getZoneData() {
+    if (!zonePromise) zonePromise = SafeRoute.loadZone().then(fc => {
+      polys = SafeRoute.polygonsFromGeoJSON(fc);
+      if (map) zoneLayer = L.geoJSON(fc, { style: { color: '#1f5f9e', weight: 1, fillColor: '#3b82c4', fillOpacity: 0.35 }, interactive: false }).addTo(map);
+      return polys;
+    }).catch(e => { zonePromise = null; throw e; });
+    return zonePromise;
+  }
+  const AREA_WORDS = [['havelock', ['havelock north']], ['wairoa', ['wairoa']], ['coast', ['haumoana', 'te awanga', 'clive', 'bay view', 'westshore', 'whirinaki', 'mahia', 'waimarama', 'ocean beach', 'clifton', 'porangahau', 'kairakau', 'pourerere', 'tangoio']],
+    ['napier', ['napier', 'taradale', 'greenmeadows', 'ahuriri', 'onekawa', 'marewa', 'tamatea', 'meeanee']], ['hastings', ['hastings', 'flaxmere', 'clive']], ['chb', ['waipukurau', 'waipawa', 'otane', 'takapau', 'central hawke']]];
+  function guessArea(label) {
+    const t = label.toLowerCase();
+    for (const [area, words] of AREA_WORDS) if (words.some(w => t.includes(w))) return area;
+    return null;
+  }
+  const mins = s => Math.max(1, Math.round(s / 60));
+  const km = m => m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m / 10) * 10 + ' m';
+  async function checkPlace(lon, lat, label) {
+    initMap();
+    const start = [lon, lat];
+    $('#results').innerHTML = '';
+    $('#routeCard').hidden = true;
+    if (routeLine) { routeLine.remove(); routeLine = null; }
+    if (endMarker) { endMarker.remove(); endMarker = null; }
+    if (map) {
+      if (startMarker) startMarker.remove();
+      startMarker = L.circleMarker([lat, lon], { radius: 9, color: '#fff', weight: 3, fillColor: '#c4372b', fillOpacity: 1 }).addTo(map).bindTooltip('You', { permanent: true, direction: 'top', offset: [0, -8] });
+      map.setView([lat, lon], 15);
+    }
+    const area = guessArea(label || ''); if (area) { areaSel.value = area; }
+    status('Checking the tsunami zone…');
+    try { await getZoneData(); } catch (e) { status('Could not load the official tsunami zone map. Check your connection and try again.', true); return; }
+    const inside = SafeRoute.inZone(start, polys);
+    zone = inside ? 'in' : 'out'; store.set('zone', zone); store.set('place', { lon, lat, label });
+    renderPlace();
+    if (!inside) { status('This place is outside the tsunami evacuation zone.'); return; }
+    status('Inside the zone. Finding the quickest walk out…');
+    try {
+      const res = await SafeRoute.nearestSafeRoute(start, polys);
+      const r = res.best;
+      if (map) {
+        routeLine = L.geoJSON(r.geometry, { style: { color: '#e8a317', weight: 6, opacity: .95 } }).addTo(map);
+        endMarker = L.circleMarker([r.end[1], r.end[0]], { radius: 9, color: '#fff', weight: 3, fillColor: '#2c8a4b', fillOpacity: 1 }).addTo(map).bindTooltip('Safe point', { permanent: true, direction: 'top', offset: [0, -8] });
+        map.fitBounds(routeLine.getBounds(), { padding: [48, 48], maxZoom: 17 });
+      }
+      const m = mins(r.duration), ok = m <= 10, tight = m <= 15;
+      $('#routeCard').innerHTML = `
+        <h3>Walk out: about ${m} minute${m === 1 ? '' : 's'}</h3>
+        <div class="route-sum">
+          <div class="total"><b>${m}</b><span>minutes walking</span></div>
+          <div class="total"><b>${km(r.distance)}</b><span>to the safe point</span></div>
+        </div>
+        <div class="verdict ${ok ? 'green' : tight ? 'amber' : 'red'}">${ok ? 'This fits inside the 15 minute window, with time to get ready.' : tight ? 'This only just fits in 15 minutes. Leave the moment shaking stops, and practise it.' : 'This walk takes longer than 15 minutes. If you cannot get out in time, as a last resort go to the upper floors of a strong multi-storey building or the highest ground you can reach, and talk to Hawke’s Bay Emergency Management about your options.'}</div>
+        ${r.steps.length ? `<details><summary style="cursor:pointer;font-weight:600">Step-by-step directions</summary><ol class="dirs">${r.steps.map(s => `<li>${esc(s.text)} <small>${km(s.distance)}</small></li>`).join('')}</ol></details>` : ''}
+        <p class="src">Walking time assumes about 5 km/h on mapped roads and paths. After a big quake, roads and bridges may be damaged: if your way is blocked, go uphill or inland by another route. Always follow official instructions.</p>
+        <button class="btn alt" type="button" id="practiseRoute">Practise this walk</button>`;
+      $('#routeCard').hidden = false;
+      $('#practiseRoute').addEventListener('click', () => { scenSel.value = 'tsunami'; paintScen(); $('#walkEst').value = m; showTab('practice'); });
+      status('Route found. Walk, don’t drive.');
+    } catch (e) {
+      status('Could not work out a walking route right now (' + e.message + '). Use the map to find the nearest high ground outside the blue area.', true);
+    }
+  }
+  $('#addrForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const q = $('#addr').value.trim(); if (!q) { $('#addr').focus(); return; }
+    status('Searching…'); $('#results').innerHTML = '';
+    try {
+      const hits = await SafeRoute.geocode(q);
+      if (!hits.length) { status('No Hawke’s Bay address found. Try adding the suburb or town.', true); return; }
+      if (hits.length === 1) return checkPlace(hits[0].lon, hits[0].lat, hits[0].label);
+      status('Which one?');
+      $('#results').innerHTML = hits.map((h, i) => `<li><button type="button" data-i="${i}">${esc(h.label)}</button></li>`).join('');
+      $('#results').onclick = ev => { const b = ev.target.closest('button'); if (b) { const h = hits[Number(b.dataset.i)]; $('#addr').value = h.label.split(',').slice(0, 3).join(','); checkPlace(h.lon, h.lat, h.label); } };
+    } catch (err) { status('Address search is not responding. Check your connection and try again.', true); }
+  });
+  $('#locBtn').addEventListener('click', () => {
+    if (!navigator.geolocation) { status('This device cannot share its location.', true); return; }
+    status('Finding your location…');
+    navigator.geolocation.getCurrentPosition(p => checkPlace(p.coords.longitude, p.coords.latitude, ''),
+      () => status('Location was not shared. Type your address instead.', true), { enableHighAccuracy: true, timeout: 15000 });
+  });
+  initMap();
+  getZoneData().catch(() => {});
+  const lastPlace = store.get('place', null);
+  if (lastPlace) { $('#addr').value = (lastPlace.label || '').split(',').slice(0, 3).join(','); checkPlace(lastPlace.lon, lastPlace.lat, lastPlace.label); }
+
+  renderPlace(); renderPack(); renderHistory();
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+
+</body>
+</html>
