@@ -68,7 +68,7 @@
       const order = dirs.slice().sort((d1, d2) => (d2[0] * away[0] + d2[1] * away[1]) - (d1[0] * away[0] + d1[1] * away[1]));
       for (const d of order) {
         const c = offset(v, d[0] * o.step, d[1] * o.step);
-        if (!inZone(c, polys)) { picked.push(c); break; }
+        if (!inZone(c, polys) && (!o.clear || edgeDistance(c, polys) >= o.clear)) { picked.push(c); break; }
       }
     }
     return picked;
@@ -152,19 +152,20 @@
   const ll = p => p[0].toFixed(6) + ',' + p[1].toFixed(6);
 
   // Walk times from start to each candidate; drops candidates that snap back into the zone.
-  async function rankCandidates(start, cands, polys, fetchImpl) {
+  async function rankCandidates(start, cands, polys, fetchImpl, clear) {
+    const safe = p => !inZone(p, polys) && (!clear || edgeDistance(p, polys) >= clear / 2);
     try {
       const url = OSRM_FOOT + '/table/v1/driving/' + [start].concat(cands).map(ll).join(';') + '?sources=0&annotations=duration,distance';
       const t = await getJSON(url, fetchImpl);
       if (t.code !== 'Ok') throw new Error(t.code);
       return cands.map((c, i) => ({ point: t.destinations[i + 1].location, duration: t.durations[0][i + 1], distance: t.distances ? t.distances[0][i + 1] : null }))
-        .filter(r => r.duration != null && !inZone(r.point, polys))
+        .filter(r => r.duration != null && safe(r.point))
         .sort((a, b) => a.duration - b.duration);
     } catch (e) {
       // table service unavailable: fall back to routing the five nearest one by one
       const out = [];
       for (const c of cands.slice(0, 5)) {
-        try { const r = await route(start, c, fetchImpl); if (!inZone(r.end, polys)) out.push({ point: r.end, duration: r.duration, distance: r.distance, route: r }); } catch (_) {}
+        try { const r = await route(start, c, fetchImpl); if (safe(r.end)) out.push({ point: r.end, duration: r.duration, distance: r.distance, route: r }); } catch (_) {}
       }
       return out.sort((a, b) => a.duration - b.duration);
     }
@@ -196,12 +197,13 @@
 
   // Up to n walking routes to different safe points, heading in clearly different directions, quickest first.
   // force: route even when the local shapes say outside (the council service said inside)
-  async function safeRoutes(start, polys, fetchImpl, force, n) {
-    n = n || 3;
+  // opts.step: how far past the zone edge each safe point sits; opts.clear: minimum metres from the edge
+  async function safeRoutes(start, polys, fetchImpl, force, n, opts) {
+    n = n || 3; opts = opts || {};
     if (!force && !inZone(start, polys)) return { inside: false, routes: [] };
-    const cands = safeCandidates(start, polys, { max: 24 });
+    const cands = safeCandidates(start, polys, { max: 24, step: opts.step || 40, clear: opts.clear || 0 });
     if (!cands.length) throw new Error('Could not find a point outside the zone nearby');
-    const ranked = await rankCandidates(start, cands, polys, fetchImpl);
+    const ranked = await rankCandidates(start, cands, polys, fetchImpl, opts.clear || 0);
     if (!ranked.length) throw new Error('No walking route out of the zone was found');
     const chosen = [];
     for (const c of ranked) {
