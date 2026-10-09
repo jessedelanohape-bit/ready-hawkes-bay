@@ -75,7 +75,9 @@ label.field { display: grid; gap: 6px; font-weight: 600; }
 
 .zone-banner { border-radius: 12px; padding: 16px; display: grid; gap: 6px; }
 .zone-in { background: var(--zone); color: #fff; }
-.zone-alert { background: var(--danger); color: #fff; }
+.zone-alert { background: var(--danger); color: #fff; padding: 20px 16px; box-shadow: 0 6px 20px rgba(196,55,43,.35); }
+.zone-alert h3 { font-size: 1.6rem; text-transform: uppercase; letter-spacing: .02em; }
+.zone-alert .big-word { font-family: var(--font-display); font-size: 3rem; line-height: 1; text-transform: uppercase; letter-spacing: .04em; }
 .zone-alert a { color: #fff; }
 .zone-alert .tag { display: inline-block; background: #fff; color: var(--danger); font-weight: 700; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; justify-self: start; }
 .zone-in a { color: #fff; }
@@ -188,7 +190,7 @@ ol.dirs small { color: var(--muted); }
   <div class="brand"><h1>Ready Hawke's Bay</h1><small>Your emergency plan, for where you live</small></div>
   <button class="sos" id="sosBtn" type="button">Emergency now</button>
 </header>
-<div class="proto">Prototype for testing (version 6). In a real emergency, follow Civil Defence and emergency services.</div>
+<div class="proto">Prototype for testing (version 7). In a real emergency, follow Civil Defence and emergency services.</div>
 
 <main>
   <!-- MY PLACE -->
@@ -204,14 +206,17 @@ ol.dirs small { color: var(--muted); }
       <button class="btn alt" type="button" id="locBtn">Use my current location</button>
       <p class="src" id="matched"></p>
       <p class="status" id="status" aria-live="polite"></p>
+      <p class="src" id="diag"></p>
       <p class="src">Pin in the wrong place? Tap the map on your home, or drag the red pin.</p>
       <ul class="results" id="results"></ul>
     </div>
 
-    <div id="map" role="region" aria-label="Map of the tsunami zone and your route"></div>
-    <p class="src">Blue area: official Hawke's Bay tsunami evacuation zone (Hawke's Bay Regional Council, updated Aug 2026, CC BY 4.0). Map &copy; OpenStreetMap contributors. Walking routes by the FOSSGIS OSRM service. Your address is sent to these services to search and route; it is not stored by this app.</p>
+    <div id="zoneBanner"></div>
 
     <div class="card" id="routeCard" hidden></div>
+
+    <div id="map" role="region" aria-label="Map of the tsunami zone and your route"></div>
+    <p class="src">Blue area: official Hawke's Bay tsunami evacuation zone (Hawke's Bay Regional Council, updated Aug 2026, CC BY 4.0). Map &copy; OpenStreetMap contributors. Walking routes by the FOSSGIS OSRM service. Your address is sent to these services to search and route; it is not stored by this app.</p>
 
     <div class="card">
       <label class="field" for="area">Area (for the hazard list below)
@@ -227,7 +232,6 @@ ol.dirs small { color: var(--muted); }
       </label>
     </div>
 
-    <div id="zoneBanner"></div>
 
     <div>
       <p class="label" style="margin-bottom:8px">What could affect you</p>
@@ -355,7 +359,7 @@ ol.dirs small { color: var(--muted); }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="route.js?v=6"></script>
+<script src="route.js?v=7"></script>
 <script>
 (function () {
   const store = {
@@ -417,10 +421,10 @@ ol.dirs small { color: var(--muted); }
     const area = areaSel.value; store.set('area', area);
     const z = zone;
     const banner = $('#zoneBanner');
-    if (z === 'in') banner.innerHTML = '<div class="zone-banner zone-alert" role="alert"><span class="tag">Tsunami zone</span><h3>You are in the tsunami blue zone</h3><p>After a long or strong earthquake, walk out straight away. Don\u2019t wait for a warning. Your Plan A, B and C routes are below the map. Practise them.</p></div>';
-    else if (z === 'near') banner.innerHTML = '<div class="zone-banner zone-alert" role="alert"><span class="tag">Edge of zone</span><h3>You are right on the edge of the tsunami blue zone</h3><p>Your spot is within ' + (store.get('edge', 0)) + ' m of the zone. Maps are not exact, so plan as if you are in it: after a long or strong earthquake, move inland or uphill straight away. Check your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">official Hawke\u2019s Bay tsunami map</a>.</p></div>';
+    if (z === 'in') banner.innerHTML = '<div class="zone-banner zone-alert" role="alert"><span class="tag">Tsunami zone</span><span class="big-word">Evacuate</span><h3>when the ground shakes long or strong</h3><p>You are in the tsunami blue zone. Walk out straight away, don\u2019t wait for a warning, don\u2019t drive. Your Plan A, B and C are just below. Practise them.</p></div>';
+    else if (z === 'near') banner.innerHTML = '<div class="zone-banner zone-alert" role="alert"><span class="tag">Edge of zone</span><span class="big-word">Evacuate</span><h3>when the ground shakes long or strong</h3><p>Your spot is within ' + (store.get('edge', 0)) + ' m of the zone. Maps are not exact, so plan as if you are in it: after a long or strong earthquake, move inland or uphill straight away. Check your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">official Hawke\u2019s Bay tsunami map</a>.</p></div>';
     else if (z === 'out') banner.innerHTML = '<div class="zone-banner zone-out"><h3>The pin is outside the mapped tsunami zone</h3><p>The pin is ' + (store.get('edge', 0)) + ' m from the zone edge. Make sure the pin is on your home, and confirm your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">official Hawke\u2019s Bay tsunami map</a>. If you work, study or visit inside the zone, plan a route from there too.</p></div>';
-    else banner.innerHTML = '<div class="zone-banner zone-alert"><span class="tag">Not confirmed</span><h3>Plan as if you are in the zone</h3><p>We could not confirm your exact spot. Put the pin on your home (tap the map or drag the pin), and check your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">official Hawke\u2019s Bay tsunami map</a>.</p></div>';
+    else banner.innerHTML = '<div class="zone-banner zone-alert"><span class="tag">Not confirmed</span><span class="big-word">Evacuate</span><h3>when the ground shakes long or strong, until confirmed</h3><p>We could not confirm your exact spot. Put the pin on your home (tap the map or drag the pin), and check your address on the <a href="https://www.hbemergency.govt.nz/hazards/tsunami/" target="_blank" rel="noopener">official Hawke\u2019s Bay tsunami map</a>.</p></div>';
     const map = Object.assign({}, AREAS[area]);
     if (z === 'in' || z === 'near' || z === 'unsure') map.tsunami = 'high';
     if (z === 'out') map.tsunami = map.tsunami || 'low';
@@ -646,6 +650,7 @@ ol.dirs small { color: var(--muted); }
       return `<div class="step"><b>1. Drop, Cover, Hold</b><span>Get down, get under something sturdy, hold on until the shaking stops.</span></div>
       <div class="step"><b>2. Long or strong? Get gone</b><span>${inZone ? 'Shaking over a minute, or hard to stand: walk out of the blue zone now. Don’t wait for a warning. Don’t drive.' : 'You told us you are outside the blue zone. Stay away from the coast, rivers and streams.'}</span></div>
       <div class="step"><b>3. Keep moving</b><span>Once outside the zone, keep going to make room for others. Don’t go back for children at school: schools evacuate on their own plan.</span></div>
+      <button type="button" class="close" id="sheetRoute" style="justify-self:stretch;background:#fff;color:var(--danger);font-family:var(--font-display);font-size:1.4rem;text-transform:uppercase;padding:14px">Find my way out now</button>
       <div class="step"><b>4. Stay out</b><span>Stay away from the coast for at least 24 hours, or until Civil Defence gives the all-clear.</span></div>`;
     },
     flood: () => `<div class="step"><b>1. Move to higher ground</b><span>Go now if you are told to, or if water is rising. Take your grab bags and pets.</span></div>
@@ -668,11 +673,13 @@ ol.dirs small { color: var(--muted); }
   };
   $('#sheetScen').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; sheetScen = b.dataset.s; paintSheet(); });
   $('#sosBtn').addEventListener('click', () => { paintSheet(); $('#sheet').hidden = false; $('#sheetClose').focus(); });
+  $('#sheetBody').addEventListener('click', e => { if (e.target.closest('#sheetRoute')) { $('#sheet').hidden = true; showTab('place'); locate(false); } });
   $('#sheetClose').addEventListener('click', () => { $('#sheet').hidden = true; $('#sosBtn').focus(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) $('#sheetClose').click(); });
 
 
   /* ---------- address, zone and route ---------- */
+  const diag = {}; const showDiag = () => { $('#diag').textContent = 'v7 \u00b7 ' + Object.entries(diag).map(([k, v]) => k + ': ' + v).join(' \u00b7 '); };
   const status = (msg, err) => { const el = $('#status'); el.textContent = msg; el.classList.toggle('err', !!err); };
   let routeGroup = null, map = null, zoneLayer = null, startMarker = null, endMarker = null, routeLine = null, polys = null, zonePromise = null;
   const HB = [-39.49, 176.9];
@@ -716,11 +723,13 @@ ol.dirs small { color: var(--muted); }
     }
     const area = guessArea(label || ''); if (area) { areaSel.value = area; }
     status('Checking the tsunami zone…');
-    try { await getZoneData(); } catch (e) { status('Could not load the official tsunami zone map. Check your connection and try again.', true); return; }
+    diag.spot = lat.toFixed(4) + ',' + lon.toFixed(4); diag['zone map'] = 'loading'; showDiag();
+    try { await getZoneData(); diag['zone map'] = polys.length + ' shapes'; } catch (e) { diag['zone map'] = 'failed'; showDiag(); status('Could not load the official tsunami zone map. Check your connection and try again. Until then, plan as if you are in the zone.', true); zone = 'unsure'; store.set('zone', zone); renderPlace(); return; }
     const localIn = SafeRoute.inZone(start, polys);
     const edge = Math.round(SafeRoute.edgeDistance(start, polys));
     const serverIn = await SafeRoute.serverInZone(start);
     // Fail safe: inside if either check says so; only "outside" when both agree and the pin is exact.
+    diag['on phone'] = localIn ? 'inside' : 'outside'; diag['council check'] = serverIn === null ? 'no answer' : serverIn ? 'inside' : 'outside'; showDiag();
     const inside = localIn || serverIn === true;
     const NEAR = 250;
     if (inside) zone = 'in';
@@ -780,10 +789,13 @@ ol.dirs small { color: var(--muted); }
         $('#routeCard .opts').onclick = ev => { const b = ev.target.closest('button[data-i]'); if (b) pick(Number(b.dataset.i)); };
         $('#practiseRoute').addEventListener('click', () => { scenSel.value = 'tsunami'; paintScen(); $('#walkEst').value = m; showTab('practice'); });
       };
+      diag.routes = routes.length; showDiag();
       pick(0);
+      $('#zoneBanner').scrollIntoView({ behavior: 'smooth', block: 'start' });
       if (map) { const g = L.featureGroup(routeLines.concat(endMarkers)); map.fitBounds(g.getBounds(), { padding: [48, 48], maxZoom: 17 }); }
       status(lead + ' ' + (routes.length > 1 ? routes.length + ' routes found: Plan A is the quickest. ' : 'Route found. ') + 'Walk, don\u2019t drive.' + exactNote, true);
     } catch (e) {
+      diag.routes = 'failed: ' + e.message; showDiag();
       status('Could not work out a walking route right now (' + e.message + '). Use the map to find the nearest high ground outside the blue area.', true);
     }
   }
@@ -800,16 +812,18 @@ ol.dirs small { color: var(--muted); }
       $('#results').onclick = ev => { const b = ev.target.closest('button'); if (b) { const h = hits[Number(b.dataset.i)]; $('#addr').value = h.label.split(',').slice(0, 3).join(','); $('#matched').textContent = 'Showing: ' + h.label; checkPlace(h.lon, h.lat, h.label, h); } };
     } catch (err) { status('Address search is not responding. Check your connection and try again.', true); }
   });
-  $('#locBtn').addEventListener('click', () => {
-    if (!navigator.geolocation) { status('This device cannot share its location.', true); return; }
-    status('Finding your location…');
-    navigator.geolocation.getCurrentPosition(p => checkPlace(p.coords.longitude, p.coords.latitude, ''),
-      () => status('Location was not shared. Type your address instead.', true), { enableHighAccuracy: true, timeout: 15000 });
-  });
+  function locate(quiet) {
+    if (!navigator.geolocation) { if (!quiet) status('This device cannot share its location.', true); return; }
+    status('Finding your location\u2026');
+    navigator.geolocation.getCurrentPosition(p => { $('#matched').textContent = 'Showing: your current location (about ' + Math.round(p.coords.accuracy) + ' m accuracy)'; $('#addr').value = ''; checkPlace(p.coords.longitude, p.coords.latitude, '', { precision: p.coords.accuracy <= 50 ? 2 : 1 }); },
+      () => status(quiet ? 'Allow location, or type your address, to check your spot.' : 'Location was not shared. Type your address instead.', true), { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  }
+  $('#locBtn').addEventListener('click', () => locate(false));
   initMap();
   getZoneData().catch(() => {});
   const lastPlace = store.get('place', null);
   if (lastPlace) { $('#addr').value = (lastPlace.label || '').split(',').slice(0, 3).join(','); checkPlace(lastPlace.lon, lastPlace.lat, lastPlace.label, { precision: lastPlace.precision == null ? 2 : lastPlace.precision }); }
+  else locate(true);
 
   renderPlace(); renderPack(); renderHistory();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

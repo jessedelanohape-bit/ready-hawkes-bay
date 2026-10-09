@@ -1,6 +1,6 @@
 // Keeps the app and the last-loaded tsunami zone available offline.
-const CACHE = 'ready-hb-v6';
-const SHELL = ['./', 'index.html', 'route.js?v=6', 'icon.svg', 'manifest.webmanifest',
+const CACHE = 'ready-hb-v7';
+const SHELL = ['./', 'index.html', 'route.js?v=7', 'icon.svg', 'manifest.webmanifest',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
