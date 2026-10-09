@@ -222,21 +222,53 @@
       straight = true;
       ranked = cands.map(c => ({ point: c, distance: metres(start, c) * 1.25, duration: metres(start, c) * 1.25 / 1.2 })).sort((a, b) => a.distance - b.distance);
     }
-    const chosen = [];
+    // Shortlist a few candidates in different directions, fetch their real walking routes, then throw out any route
+    // that wanders through the zone (a road can leave the zone on the map but walk you along the river first).
+    const shortlist = [];
     for (const c of ranked) {
-      if (chosen.length >= n) break;
+      if (shortlist.length >= Math.max(n * 3, 8)) break;
       const b = bearing(start, c.point);
-      if (chosen.some(o => angleGap(o.bearing, b) < 50 || metres(o.point, c.point) < 300)) continue;
-      chosen.push(Object.assign({ bearing: b }, c));
+      if (shortlist.some(o => angleGap(o.bearing, b) < 25)) continue;
+      shortlist.push(Object.assign({ bearing: b }, c));
     }
+    const needed = inZone(start, polys) ? edgeDistance(start, polys) : 0;
+    const fetched = [];
+    for (const c of shortlist) {
+      if (straight) { fetched.push({ geometry: { type: 'LineString', coordinates: [start, c.point] }, duration: c.duration, distance: c.distance, end: c.point, steps: [], bearing: c.bearing, straight: true, score: c.distance, inZoneMetres: 0 }); continue; }
+      try {
+        const r = c.route || await route(start, c.point, fetchImpl);
+        r.bearing = c.bearing; r.elevation = c.elevation; r.edge = edgeDistance(r.end, polys);
+        r.inZoneMetres = metresInZone(r.geometry.coordinates, polys);
+        // walking inside the zone beyond what the direct way out needs costs a second a metre; far too much and it is dropped
+        const excess = Math.max(0, r.inZoneMetres - needed * 1.5 - 100);
+        r.throughZone = excess > 400;
+        r.score = (c.score != null ? c.score : r.duration) + excess;
+        fetched.push(r);
+      } catch (_) {}
+    }
+    let pool = fetched.filter(r => !r.throughZone);
+    if (!pool.length) pool = fetched;
+    pool.sort((a, b) => a.score - b.score);
     const routes = [];
-    for (const c of chosen) {
-      if (straight) { routes.push({ geometry: { type: 'LineString', coordinates: [start, c.point] }, duration: c.duration, distance: c.distance, end: c.point, steps: [], bearing: c.bearing, straight: true, score: c.distance }); continue; }
-      try { const r = c.route || await route(start, c.point, fetchImpl); r.bearing = c.bearing; r.elevation = c.elevation; r.score = c.score != null ? c.score : r.duration; r.edge = edgeDistance(r.end, polys); routes.push(r); } catch (_) {}
+    for (const r of pool) {
+      if (routes.length >= n) break;
+      if (routes.some(o => angleGap(o.bearing, r.bearing) < 50 || metres(o.end, r.end) < 300)) continue;
+      routes.push(r);
     }
     if (!routes.length) throw new Error('No walking route out of the zone was found');
-    routes.sort((a, b) => a.score - b.score);
     return { inside: true, routes, straight };
+  }
+  // Metres of a route line that lie inside the zone, sampled every 25 m.
+  function metresInZone(coords, polys) {
+    let total = 0;
+    for (let i = 1; i < coords.length; i++) {
+      const a = coords[i - 1], b = coords[i], len = metres(a, b), parts = Math.max(1, Math.ceil(len / 25));
+      for (let k = 0; k < parts; k++) {
+        const t = (k + 0.5) / parts;
+        if (inZone([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], polys)) total += len / parts;
+      }
+    }
+    return total;
   }
   // Height above sea level for each point (Open-Meteo, free, no key). null when the service cannot be reached.
   async function elevations(points, fetchImpl) {
@@ -252,6 +284,6 @@
   }
   const compass = deg => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
 
-  const api = { polygonsFromGeoJSON, inZone, edgeDistance, serverInZone, metres, safeCandidates, loadZone, geocode, nearestSafeRoute, safeRoutes, compass, route, elevations, ZONE_LAYER };
+  const api = { polygonsFromGeoJSON, inZone, edgeDistance, serverInZone, metres, safeCandidates, loadZone, geocode, nearestSafeRoute, safeRoutes, compass, route, elevations, metresInZone, ZONE_LAYER };
   if (typeof module !== 'undefined') module.exports = api; else root.SafeRoute = api;
 })(typeof window !== 'undefined' ? window : globalThis);
